@@ -16,7 +16,7 @@ const ROLES = [
 ];
 
 import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
-import { auth, googleProvider } from '../lib/firebase';
+import { auth, googleProvider, firebaseConfig } from '../lib/firebase';
 
 export default function Login() {
   const { t, i18n } = useTranslation();
@@ -33,37 +33,56 @@ export default function Login() {
   }, [user, profile]);
 
   const handleLogin = () => {
+    // Clear any previous unauthorized domain error so every retry starts fresh
+    setUnauthorizedDomain(null);
     googleProvider.setCustomParameters({ prompt: 'select_account' });
-    const popupPromise = signInWithPopup(auth, googleProvider);
     useAuthStore.setState({ loggingIn: true });
-    
-    popupPromise
+
+    signInWithPopup(auth, googleProvider)
+      .then(() => {
+        setUnauthorizedDomain(null);
+        useAuthStore.setState({ loggingIn: false });
+      })
       .catch((error: any) => {
+        useAuthStore.setState({ loggingIn: false });
         if (error.code === 'auth/popup-blocked') {
           // Fallback to redirect if popup is blocked (common on mobile)
           toast.loading('جاري تحويلك لتسجيل الدخول...');
-          signInWithRedirect(auth, googleProvider).catch((redirectError) => {
+          useAuthStore.setState({ loggingIn: true });
+          signInWithRedirect(auth, googleProvider).catch((redirectError: any) => {
              console.warn('Redirect login error:', redirectError?.code || redirectError?.message);
-             toast.error('فشل التحويل لتسجيل الدخول.');
+             if (
+               redirectError?.code === 'auth/unauthorized-domain' ||
+               redirectError?.message?.includes('unauthorized-domain') ||
+               redirectError?.message?.includes('_validateOrigin')
+             ) {
+               const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+               setUnauthorizedDomain(currentHost);
+               toast.error(`النطاق (${currentHost}) غير مصرح به في مشروع Firebase (${firebaseConfig.projectId}).`);
+             } else {
+               toast.error('فشل التحويل لتسجيل الدخول.');
+             }
              useAuthStore.setState({ loggingIn: false });
           });
         } else if (error.code === 'auth/popup-closed-by-user') {
           toast.info(t('errors.popupClosed') || 'تم إغلاق نافذة تسجيل الدخول.');
-          useAuthStore.setState({ loggingIn: false });
-        } else if (error.code === 'auth/unauthorized-domain' || error.message?.includes('unauthorized-domain')) {
-          const currentHost = window.location.hostname;
+        } else if (
+          error.code === 'auth/unauthorized-domain' ||
+          error.message?.includes('unauthorized-domain') ||
+          error.message?.includes('authorized domain') ||
+          error.stack?.includes('_validateOrigin')
+        ) {
+          const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
           setUnauthorizedDomain(currentHost);
-          toast.error(`النطاق (${currentHost}) غير مصرح به في Firebase Auth. يرجى إضافته إلى Authorized Domains في Firebase Console.`, {
-            duration: 8000
-          });
-          useAuthStore.setState({ loggingIn: false });
+          toast.error(
+            `النطاق (${currentHost}) غير مصرح به في مشروع Firebase (${firebaseConfig.projectId}). يرجى التحقق من إضافته إلى Authorized Domains في إعدادات المشروع الصحيح.`,
+            { duration: 8000 }
+          );
         } else if (error.code === 'auth/network-request-failed') {
           toast.error(t('errors.offline') || 'خطأ في الاتصال بالشبكة.');
-          useAuthStore.setState({ loggingIn: false });
         } else {
           console.warn('Login attempt:', error?.code || error?.message);
           toast.error(t('common.failed') || 'فشل تسجيل الدخول.');
-          useAuthStore.setState({ loggingIn: false });
         }
       });
   };
@@ -227,25 +246,75 @@ export default function Login() {
 
         <div className="space-y-4">
           {unauthorizedDomain && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-xs text-amber-300 text-right space-y-2.5 animate-in fade-in" dir="rtl">
-              <p className="font-bold flex items-center gap-1.5 text-amber-400">
-                <span>⚠️ تنبيه: النطاق يحتاج تفعيل في Firebase</span>
-              </p>
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-xs text-amber-300 text-right space-y-3 animate-in fade-in" dir="rtl">
+              <div className="flex items-center justify-between">
+                <p className="font-bold flex items-center gap-1.5 text-amber-400 text-sm">
+                  <span>⚠️ تنبيه: النطاق يحتاج تفعيل في Firebase</span>
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setUnauthorizedDomain(null)}
+                  className="text-zinc-400 hover:text-white text-xs px-2 py-0.5 rounded bg-zinc-800/80 transition-colors"
+                  title="إغلاق التنبيه"
+                >
+                  ✕ إغلاق
+                </button>
+              </div>
+
               <p className="text-zinc-300 leading-relaxed">
-                لتفعيل تسجيل الدخول على هذا الرابط (أو Cloudflare Pages)، انسخ النطاق بالأسفل وأضفه إلى قائمة <strong className="text-white">Authorized Domains</strong> في Firebase Console &gt; Authentication &gt; Settings:
+                رمز الخطأ الصادر من Firebase Auth هو <code className="text-amber-300 font-mono bg-black/40 px-1 py-0.5 rounded">auth/unauthorized-domain</code>.
+                لتفعيل الدخول، تأكد من إضافة هذا النطاق إلى قائمة <strong className="text-white">Authorized Domains</strong> داخل <strong className="text-white">مشروع Firebase الفعلي للعبة</strong>:
               </p>
-              <div className="flex items-center justify-between gap-2 bg-black/60 p-2 rounded-lg border border-zinc-800">
-                <code className="text-amber-200 text-xs font-mono select-all truncate">{unauthorizedDomain}</code>
+
+              <div className="bg-black/60 rounded-lg p-2.5 border border-zinc-800 space-y-2 text-xs">
+                <div className="flex items-center justify-between gap-2 border-b border-zinc-800/60 pb-2">
+                  <span className="text-zinc-400">مشروع Firebase الفعلي:</span>
+                  <code className="text-red-400 font-mono font-bold select-all">{firebaseConfig.projectId}</code>
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-zinc-400">النطاق المطلوب إضافته:</span>
+                  <code className="text-amber-200 font-mono font-bold select-all">{unauthorizedDomain}</code>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
                   type="button"
                   onClick={() => {
                     navigator.clipboard.writeText(unauthorizedDomain);
                     toast.success('تم نسخ النطاق بنجاح');
                   }}
-                  className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded text-xs font-bold transition-colors shrink-0"
+                  className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
                 >
-                  نسخ النطاق
+                  <span>📋 نسخ النطاق</span>
                 </button>
+
+                <a
+                  href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                >
+                  <span>🔗 فتح إعدادات المشروع في Firebase Console</span>
+                </a>
+
+                <button
+                  type="button"
+                  onClick={handleLogin}
+                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition-colors mr-auto"
+                >
+                  🔄 إعادة المحاولة الآن
+                </button>
+              </div>
+
+              <div className="bg-amber-950/20 border border-amber-500/20 rounded-lg p-2 text-[11px] text-zinc-400 space-y-1">
+                <p className="text-amber-300/90 font-semibold">ملاحظات هامة لنشر Cloudflare Pages / Workers:</p>
+                <p>
+                  • تأكد من إضافة النطاق إلى مشروع <span className="text-white font-mono">{firebaseConfig.projectId}</span> تحديداً، وليس مشروعاً آخر في حسابك.
+                </p>
+                <p>
+                  • أدخل اسم النطاق فقط بدون <span className="text-zinc-300 font-mono">https://</span> وبدون شرطة مائلة (مثلاً: <span className="text-zinc-300 font-mono">{unauthorizedDomain}</span>).
+                </p>
               </div>
             </div>
           )}

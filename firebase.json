@@ -7,6 +7,10 @@
     {
       "database": "ai-studio-mafiastreets-daec03dc-4144-4ac3-a821-3ee78e95dff0",
       "rules": "firestore.rules"
+    },
+    {
+      "database": "ai-studio-mafiastreets-b6c1510c-96b8-4bc0-9cf2-4431920ae82a",
+      "rules": "firestore.rules"
     }
   ]
 }

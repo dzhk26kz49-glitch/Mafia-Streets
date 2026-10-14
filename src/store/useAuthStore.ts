@@ -576,7 +576,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
     });
 
     if (user) {
-      set({ user, loading: true });
+      set({ user, loading: true, loggingIn: false });
       hasSyncedPublicProfile = false;
 
       // Listen to custom products
