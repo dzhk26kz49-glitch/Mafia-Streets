@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <script>
+      // Ignore Vite HMR / WebSocket connection errors and handle Quota errors
+      (function() {
+        const shouldIgnore = (msg) => {
+          if (!msg) return false;
+          const str = String(msg);
+          return (
+            str.includes('[vite]') ||
+            str.includes('Importing a module script failed') ||
+            str.includes('Failed to reload') ||
+            str.includes('WebSocket') ||
+            str.includes('ws:disconnect') ||
+            str.includes('vite:ws') ||
+            str.includes('resource-exhausted') ||
+            str.includes('Quota limit exceeded') ||
+            str.includes('Quota exceeded')
+          );
+        };
+
+        const origError = console.error;
+        console.error = function(...args) {
+          const combined = args.map(a => typeof a === 'string' ? a : (a?.message || '')).join(' ');
+          if (shouldIgnore(combined)) return;
+          origError.apply(console, args);
+        };
+
+        const origWarn = console.warn;
+        console.warn = function(...args) {
+          const combined = args.map(a => typeof a === 'string' ? a : (a?.message || '')).join(' ');
+          if (shouldIgnore(combined)) return;
+          origWarn.apply(console, args);
+        };
+
+        window.addEventListener('unhandledrejection', (event) => {
+          const msg = event?.reason?.message || String(event?.reason || '');
+          if (shouldIgnore(msg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation?.();
+          }
+        }, true);
+
+        window.addEventListener('error', (event) => {
+          const msg = event?.message || '';
+          if (shouldIgnore(msg)) {
+            event.preventDefault();
+            event.stopImmediatePropagation?.();
+          }
+        }, true);
+      })();
+    </script>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>MAFIA STREETS</title>
+    <meta name="description" content="A high-stakes Mafia-themed strategy game where you build your criminal empire, form gangs, and compete for power." />
+    <meta property="og:title" content="MAFIA STREETS" />
+    <meta property="og:description" content="A high-stakes Mafia-themed strategy game where you build your criminal empire, form gangs, and compete for power." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

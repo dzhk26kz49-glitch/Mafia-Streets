@@ -1,0 +1,425 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Represents a player in the game.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "displayName": { "type": "string" },
+        "cleanMoney": { "type": "number" },
+        "dirtyMoney": { "type": "number" },
+        "bankBalance": { "type": "number" },
+        "level": { "type": "number" },
+        "health": { "type": "number" },
+        "isImprisoned": { "type": "boolean" },
+        "role": { "type": "string" },
+        "militia": { "$ref": "Militia" }
+      },
+      "required": ["uid", "displayName"]
+    },
+    "Militia": {
+      "title": "Militia",
+      "description": "Represents a player's private militia.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "image": { "type": "string" },
+        "type": { "type": "string", "enum": ["aggressive", "government", "external"] },
+        "leader": { "type": "object" },
+        "soldiers": { "type": "array" },
+        "vehicles": { "type": "array" },
+        "squads": { "type": "array" },
+        "resources": { "type": "object" },
+        "controlledResources": { "type": "object" },
+        "controlPoints": { "type": "object" },
+        "operationLogs": { "type": "array" },
+        "inventory": { "type": "object" },
+        "alliances": { "type": "array" },
+        "incomingRequests": { "type": "array" },
+        "outgoingRequests": { "type": "array" },
+        "supportLogs": { "type": "array" },
+        "attackLogs": { "type": "array" }
+      }
+    },
+    "Inventory": {
+      "title": "Inventory",
+      "description": "Represents a player's inventory.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "items": { "type": "array" }
+      },
+      "required": ["userId"]
+    },
+    "Contact": {
+      "title": "Contact",
+      "description": "A saved contact in a player's phone.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "contactId": { "type": "string" },
+        "name": { "type": "string" },
+        "phoneNumber": { "type": "string" }
+      },
+      "required": ["userId", "name", "phoneNumber"]
+    },
+    "NewsPost": {
+      "title": "NewsPost",
+      "description": "A post in the virtual news feed.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "image": { "type": "string" },
+        "type": { "type": "string", "enum": ["kill", "new_player", "news", "newspaper"] },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "content", "type"]
+    },
+    "ChatMessage": {
+      "title": "ChatMessage",
+      "description": "A message in the global chat.",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderPhoto": { "type": "string" },
+        "senderRole": { "type": "string" },
+        "text": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "senderName", "text", "timestamp"]
+    },
+    "MallData": {
+      "title": "MallData",
+      "description": "Represents a player's progress and data in the City Mall.",
+      "type": "object",
+      "properties": {
+        "luxuryLevel": { "type": "number" },
+        "totalSpent": { "type": "number" },
+        "purchasedIds": { "type": "array" },
+        "loyaltyPoints": { "type": "number" }
+      }
+    },
+    "MallImage": {
+      "title": "MallImage",
+      "description": "Cached AI-generated images for mall products.",
+      "type": "object",
+      "properties": {
+        "url": { "type": "string" },
+        "createdAt": { "type": "number" }
+      }
+    },
+    "MarketTrend": {
+      "title": "MarketTrend",
+      "description": "AI-generated market analysis and trends.",
+      "type": "object",
+      "properties": {
+        "itemType": { "type": "string" },
+        "averagePrice": { "type": "number" },
+        "demandLevel": { "type": "string" },
+        "supplyLevel": { "type": "string" },
+        "aiRecommendation": { "type": "string" },
+        "lastUpdated": { "type": "number" }
+      }
+    },
+    "MarketListing": {
+      "title": "MarketListing",
+      "description": "An item listed for sale by a player.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "itemType": { "type": "string" },
+        "quantity": { "type": "number" },
+        "price": { "type": "number" },
+        "quality": { "type": "string", "enum": ["normal", "good", "rare", "legendary"] },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["sellerId", "itemType", "quantity", "price"]
+    },
+    "TradeContract": {
+      "title": "TradeContract",
+      "description": "A request for specific resources.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "requesterName": { "type": "string" },
+        "itemType": { "type": "string" },
+        "quantity": { "type": "number" },
+        "quality": { "type": "string", "enum": ["normal", "good", "rare", "legendary"] },
+        "reward": { "type": "number" },
+        "status": { "type": "string", "enum": ["open", "accepted", "completed"] },
+        "executorId": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["requesterId", "itemType", "quantity", "reward"]
+    },
+    "CustomProduct": {
+      "title": "CustomProduct",
+      "description": "A custom product added by an admin to the market.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string" },
+        "image": { "type": "string" },
+        "category": { "type": "string" },
+        "specs": { "type": "string" },
+        "power": { "type": "number" },
+        "price": { "type": "number" },
+        "hidden": { "type": "boolean" },
+        "rare": { "type": "boolean" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["name", "type", "category", "price"]
+    },
+    "MilitiaRequest": {
+      "title": "MilitiaRequest",
+      "description": "Represents an alliance request between two militias.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "fromUid": { "type": "string" },
+        "fromName": { "type": "string" },
+        "toUid": { "type": "string" },
+        "toName": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "rejected", "cancelled"] },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["fromUid", "toUid", "status"]
+    },
+    "Lab": {
+      "title": "Lab",
+      "description": "Represents a player's criminal laboratory.",
+      "type": "object",
+      "properties": {
+        "level": { "type": "number" },
+        "workers": { "type": "number" },
+        "chemists": { "type": "number" },
+        "equipmentLevel": { "type": "number" },
+        "toolsLevel": { "type": "number" },
+        "isMobile": { "type": "boolean" },
+        "hasSupermarket": { "type": "boolean" },
+        "supermarketLaunderedToday": { "type": "number" },
+        "lastLaunderReset": { "type": "number" },
+        "activeProduction": { "type": "object" },
+        "upgrades": { "type": "object" },
+        "storage": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "amount": { "type": "number" },
+              "level": { "type": "number" }
+            }
+          }
+        },
+        "staffList": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "type": { "type": "string", "enum": ["worker", "chemist"] },
+              "gender": { "type": "string", "enum": ["male", "female"] },
+              "experience": { "type": "number" },
+              "imageUrl": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "GlobalSettings": {
+      "title": "GlobalSettings",
+      "description": "Global configuration for the entire game.",
+      "type": "object",
+      "properties": {
+        "theme": {
+          "type": "object",
+          "properties": {
+            "primaryColor": { "type": "string" },
+            "secondaryColor": { "type": "string" },
+            "accentColor": { "type": "string" },
+            "fontFamily": { "type": "string" }
+          }
+        },
+        "texts": {
+          "type": "object",
+          "description": "Custom text overrides for UI elements."
+        },
+        "gameBalance": {
+          "type": "object",
+          "properties": {
+            "moneyMultiplier": { "type": "number" },
+            "xpMultiplier": { "type": "number" },
+            "baseDifficulty": { "type": "number" }
+          }
+        },
+        "features": {
+          "type": "object",
+          "description": "Feature flags to toggle parts of the app."
+        },
+        "maintenanceMode": { "type": "boolean" },
+        "version": { "type": "string" },
+        "lastUpdated": { "type": "number" },
+        "updatedBy": { "type": "string" }
+      }
+    },
+    "AdminLog": {
+      "title": "AdminLog",
+      "description": "Log of actions performed in the admin panel.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "adminId": { "type": "string" },
+        "adminName": { "type": "string" },
+        "action": { "type": "string" },
+        "targetId": { "type": "string" },
+        "details": { "type": "string" },
+        "timestamp": { "type": "number" }
+      },
+      "required": ["adminId", "action", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "User profile data."
+    },
+    "/labs/{userId}": {
+      "schema": { "$ref": "Lab" },
+      "description": "User's criminal laboratory data."
+    },
+    "/mall_data/{userId}": {
+      "schema": { "$ref": "MallData" },
+      "description": "User's data in the City Mall."
+    },
+    "/mall_images/{productId}": {
+      "schema": { "$ref": "MallImage" },
+      "description": "Cached images for mall products."
+    },
+    "/users/{userId}/contacts/{contactId}": {
+      "schema": { "$ref": "Contact" },
+      "description": "User's saved contacts."
+    },
+    "/news_posts/{postId}": {
+      "schema": { "$ref": "NewsPost" },
+      "description": "Global news feed posts."
+    },
+    "/inventories/{userId}": {
+      "schema": { "$ref": "Inventory" },
+      "description": "Player inventory data."
+    },
+    "/global_chat/{messageId}": {
+      "schema": { "$ref": "ChatMessage" },
+      "description": "Global chat messages."
+    },
+    "/messages/{messageId}": {
+      "schema": "object",
+      "description": "Private messages between players."
+    },
+    "/gangs/{gangId}": {
+      "schema": "object",
+      "description": "Gang data."
+    },
+    "/government/{docId}": {
+      "schema": "object",
+      "description": "Government and ministerial data."
+    },
+    "/market_listings/{listingId}": {
+      "schema": { "$ref": "MarketListing" },
+      "description": "Items listed for sale in the market."
+    },
+    "/trade_contracts/{contractId}": {
+      "schema": { "$ref": "TradeContract" },
+      "description": "Trade contracts and requests."
+    },
+    "/market_trends/{trendId}": {
+      "schema": { "$ref": "MarketTrend" },
+      "description": "AI market analysis data."
+    },
+    "/custom_products/{productId}": {
+      "schema": { "$ref": "CustomProduct" },
+      "description": "Custom products added by admins."
+    },
+    "/store_categories/{categoryId}": {
+      "schema": "object",
+      "description": "Store categories managed by admins."
+    },
+    "/militia_requests/{requestId}": {
+      "schema": { "$ref": "MilitiaRequest" },
+      "description": "Alliance requests between militias."
+    },
+    "/kills/{killId}": {
+      "schema": "object",
+      "description": "Kill records for the live feed."
+    },
+    "/ministry_logs/{logId}": {
+      "schema": "object",
+      "description": "Logs for ministerial actions."
+    },
+    "/active_calls/{callId}": {
+      "schema": "object",
+      "description": "Active in-game calls."
+    },
+    "/transfer_history/{historyId}": {
+      "schema": "object",
+      "description": "History of money transfers."
+    },
+    "/prison_messages/{messageId}": {
+      "schema": "object",
+      "description": "Messages sent from prison."
+    },
+    "/constitution/{docId}": {
+      "schema": "object",
+      "description": "The city constitution documents."
+    },
+    "/bounties/{bountyId}": {
+      "schema": "object",
+      "description": "Active bounty contracts."
+    },
+    "/heists/{heistId}": {
+      "schema": "object",
+      "description": "Ongoing or completed heist statistics."
+    },
+    "/city_overrides/{overrideId}": {
+      "schema": "object",
+      "description": "Administrative overrides for city settings."
+    },
+    "/market_overrides/{overrideId}": {
+      "schema": "object",
+      "description": "Administrative overrides for market items."
+    },
+    "/gameData/{docId}": {
+      "schema": "object",
+      "description": "Global game metadata and constants."
+    },
+    "/server_settings/{settingId}": {
+      "schema": "object",
+      "description": "Global server configuration settings."
+    },
+    "/users_public/{userId}": {
+      "schema": "object",
+      "description": "Publicly visible player profiles for the leaderboard and lists."
+    },
+    "/gift_notifications/{notificationId}": {
+      "schema": "object",
+      "description": "Notifications for received gifts."
+    },
+    "/global_settings/{settingId}": {
+      "schema": { "$ref": "GlobalSettings" },
+      "description": "Centralized configuration for game settings, themes, and feature flags."
+    },
+    "/admin_logs/{logId}": {
+      "schema": { "$ref": "AdminLog" },
+      "description": "Immutable history of all administrative actions."
+    }
+  }
+}

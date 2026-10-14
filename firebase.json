@@ -1,0 +1,12 @@
+{
+  "firestore": [
+    {
+      "database": "(default)",
+      "rules": "firestore.rules"
+    },
+    {
+      "database": "ai-studio-mafiastreets-daec03dc-4144-4ac3-a821-3ee78e95dff0",
+      "rules": "firestore.rules"
+    }
+  ]
+}

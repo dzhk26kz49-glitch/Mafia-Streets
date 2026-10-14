@@ -1,0 +1,328 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // MASTER OVERRIDE: Founders have absolute read/write access to everything
+    match /{document=**} {
+      allow read, write: if isSignedIn() && request.auth.token.email != null && (
+        request.auth.token.email.lower() == "disneydesign2016@gmail.com" ||
+        request.auth.token.email.lower() == "soft4net2016@gmail.com" ||
+        request.auth.token.email.lower() == "imvu2024k@gmail.com" ||
+        request.auth.token.email.lower() == "imvu2024d@gmail.com" ||
+        request.auth.token.email.lower() == "mx779969@gmail.com" ||
+        request.auth.token.email.lower() == "j7primemustafa@gmail.com" ||
+        request.auth.token.email.lower() == "zoomnet5@gmail.com"
+      );
+    }
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    function isSignedIn() { return request.auth != null; }
+    function isOwner(userId) { return isSignedIn() && request.auth.uid == userId; }
+    
+    // Absolute Founder Override (Pillar 1: Master Gate)
+    function isFounder() {
+      return isSignedIn() && request.auth.token.email != null && (
+        request.auth.token.email.lower() == "disneydesign2016@gmail.com" ||
+        request.auth.token.email.lower() == "soft4net2016@gmail.com" ||
+        request.auth.token.email.lower() == "imvu2024k@gmail.com" ||
+        request.auth.token.email.lower() == "imvu2024d@gmail.com" ||
+        request.auth.token.email.lower() == "mx779969@gmail.com" ||
+        request.auth.token.email.lower() == "j7primemustafa@gmail.com" ||
+        request.auth.token.email.lower() == "zoomnet5@gmail.com"
+      );
+    }
+
+    function isSystemAdmin() {
+      return isFounder() || (isSignedIn() && request.auth.token.email != null && (
+        request.auth.token.email.lower() == "disneydesign2016@gmail.com" ||
+        request.auth.token.email.lower() == "zoomnet5@gmail.com"
+      ));
+    }
+
+    function isAdmin() {
+      return isSystemAdmin() || (isSignedIn() && (
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'Admin'
+      ));
+    }
+
+    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
+    function incoming() { return request.resource.data; }
+    function existing() { return resource.data; }
+
+    // ===============================================================
+    // Validation Blueprints (Pillar 2)
+    // ===============================================================
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'displayName', 'role', 'cleanMoney', 'dirtyMoney', 'bankBalance', 'health']) &&
+             (data.uid == request.auth.uid || isSystemAdmin()) &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.role is string &&
+             data.cleanMoney is number &&
+             data.dirtyMoney is number &&
+             data.bankBalance is number &&
+             data.health is number;
+    }
+
+    function isValidChatMessage(data) {
+      return data.keys().hasAll(['senderId', 'senderName', 'text', 'timestamp']) &&
+             (data.senderId == request.auth.uid || isAdmin()) &&
+             data.senderName is string && data.senderName.size() <= 100 &&
+             data.text is string && data.text.size() > 0 && data.text.size() <= 2000 &&
+             (data.timestamp == request.time || isAdmin());
+    }
+
+    function isValidMarketListing(data) {
+      return data.keys().hasAll(['sellerId', 'itemType', 'quantity', 'price', 'timestamp']) &&
+             (data.sellerId == request.auth.uid || isAdmin()) &&
+             data.itemType is string &&
+             data.quantity is number && data.quantity > 0 &&
+             data.price is number && data.price >= 0 &&
+             (data.timestamp == request.time || isAdmin());
+    }
+
+    // ===============================================================
+    // Rules (Pillar 4, 6, 8)
+    // ===============================================================
+
+
+    match /users/{userId} {
+      allow list: if isSignedIn() && (
+        isSystemAdmin() || 
+        isAdmin() ||
+        resource.data.uid == request.auth.uid || 
+        (request.auth.token.email != null && resource.data.email == request.auth.token.email)
+      );
+      allow get: if isSignedIn() && (
+        isOwner(userId) || 
+        isSystemAdmin() || 
+        isAdmin() ||
+        (request.auth.token.email != null && resource != null && resource.data.email == request.auth.token.email)
+      );
+      allow create: if isSignedIn() && (isOwner(userId) || isSystemAdmin() || isAdmin()) && isValidId(userId);
+      allow update: if isSignedIn() && (isOwner(userId) || isSystemAdmin() || isAdmin()) && isValidId(userId);
+      allow delete: if isSystemAdmin() || isAdmin();
+    }
+
+    match /users_public/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isOwner(userId) && isValidId(userId));
+    }
+
+    match /inventories/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow write: if isAdmin() || (isSignedIn() && isOwner(userId) && isValidId(userId));
+    }
+
+    match /labs/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow write: if isAdmin() || (isSignedIn() && isOwner(userId) && isValidId(userId));
+    }
+
+    match /news_posts/{postId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /global_chat/{messageId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(messageId) && isValidChatMessage(incoming());
+      allow update, delete: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      allow read: if isSignedIn() && (
+        resource.data.senderId == request.auth.uid || 
+        resource.data.receiverId == request.auth.uid ||
+        isAdmin()
+      );
+      allow create: if isSignedIn() && isValidId(messageId) && incoming().senderId == request.auth.uid && 
+                       incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 2000;
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.senderId == request.auth.uid);
+    }
+
+    match /gangs/{gangId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(gangId);
+      allow update: if isSignedIn() && isValidId(gangId) && (
+        isAdmin() || 
+        (resource.data.leaderId == request.auth.uid) ||
+        (request.auth.uid in resource.data.memberIds)
+      );
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.leaderId == request.auth.uid);
+    }
+
+    match /market_listings/{listingId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && isValidId(listingId) && isValidMarketListing(incoming()));
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.sellerId == request.auth.uid);
+    }
+
+    match /trade_contracts/{contractId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && isValidId(contractId) && incoming().requesterId == request.auth.uid);
+      allow delete: if isAdmin() || (isSignedIn() && resource.data.requesterId == request.auth.uid);
+    }
+
+    match /gift_notifications/{notificationId} {
+      allow read: if isSignedIn() && (resource.data.recipientId == request.auth.uid || isAdmin());
+      allow write: if isAdmin() || (isSignedIn() && isValidId(notificationId));
+      allow delete: if isSignedIn() && (resource.data.recipientId == request.auth.uid || isAdmin());
+    }
+
+    match /kills/{killId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(killId);
+      allow update, delete: if isAdmin();
+    }
+
+    match /government/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /ministry_logs/{logId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(logId);
+      allow update, delete: if isAdmin();
+    }
+
+    match /active_calls/{callId} {
+      allow read, write: if isAdmin() || (isSignedIn() && isValidId(callId));
+    }
+
+    match /transfer_history/{historyId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(historyId);
+      allow update, delete: if isAdmin();
+    }
+
+    match /prison_messages/{messageId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(messageId);
+      allow update, delete: if isAdmin();
+    }
+
+    match /constitution/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    match /bounties/{bountyId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(bountyId);
+    }
+
+    match /heists/{heistId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(heistId);
+    }
+
+    match /city_overrides/{overrideId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /market_overrides/{overrideId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /gameData/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /npcs/{npcId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /server_settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /mall_data/{userId} {
+      allow read: if isSignedIn() && (isOwner(userId) || isAdmin());
+      allow write: if isAdmin() || (isOwner(userId) && isValidId(userId));
+    }
+
+    match /mall_images/{productId} {
+      allow read: if true;
+      allow create: if isSignedIn() && isValidId(productId);
+      allow update, delete: if isAdmin();
+    }
+
+    match /custom_products/{productId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /store_categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /market_trends/{trendId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /militia_requests/{requestId} {
+      allow read: if isSignedIn() && (resource.data.fromUid == request.auth.uid || resource.data.toUid == request.auth.uid || isAdmin());
+      allow write: if isSignedIn() && isValidId(requestId);
+    }
+    
+    match /militias/{militiaId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (resource == null || resource.data.ownerId == request.auth.uid || isAdmin());
+    }
+
+    match /global_settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /market_notifications/{id} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if isAdmin();
+    }
+    
+    match /users/{userId}/contacts/{contactId} {
+      allow read, write: if isOwner(userId) || isAdmin();
+    }
+    
+    match /test/connection {
+      allow read: if true;
+    }
+
+    match /broadcasts/{broadcastId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /admin_logs/{logId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /city_maps/{mapId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(mapId);
+    }
+
+    match /militia_zones/{zoneId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidId(zoneId);
+    }
+
+    match /system/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+  }
+}
