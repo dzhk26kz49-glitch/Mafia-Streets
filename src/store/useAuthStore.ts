@@ -1179,14 +1179,15 @@ export const useAuthStore = create<AuthState>((set, get) => {
           throw new Error('POPUP_BLOCKED');
         }
         
-        console.error("Login failed:", error);
         if (error.code === 'auth/popup-closed-by-user') {
-          toast.error(i18n.t('errors.popupClosed'));
-        } else if (error.code === 'auth/unauthorized-domain') {
-          toast.error(i18n.t('errors.unauthorizedDomain'));
+          toast.info(i18n.t('errors.popupClosed') || 'تم إغلاق نافذة تسجيل الدخول');
+        } else if (error.code === 'auth/unauthorized-domain' || error.message?.includes('unauthorized-domain')) {
+          const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+          toast.error(`النطاق (${currentHost}) غير مصرح به في Firebase Auth. يرجى إضافته إلى Authorized Domains.`);
         } else if (error.code === 'auth/network-request-failed') {
           toast.error(i18n.t('errors.offline'));
         } else {
+          console.warn("Login attempt result:", error?.code || error?.message);
           toast.error(i18n.t('errors.loginError'));
         }
       } finally {

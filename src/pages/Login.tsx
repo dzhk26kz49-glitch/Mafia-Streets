@@ -24,6 +24,7 @@ export default function Login() {
   const [selectedRole, setSelectedRole] = useState<Role>('Random');
   const [nickname, setNickname] = useState('');
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
 
   useEffect(() => {
     if (user && !profile && user.displayName && !nickname) {
@@ -38,26 +39,30 @@ export default function Login() {
     
     popupPromise
       .catch((error: any) => {
-        console.error('Login error:', error);
         if (error.code === 'auth/popup-blocked') {
           // Fallback to redirect if popup is blocked (common on mobile)
           toast.loading('جاري تحويلك لتسجيل الدخول...');
           signInWithRedirect(auth, googleProvider).catch((redirectError) => {
-             console.error('Redirect login error:', redirectError);
+             console.warn('Redirect login error:', redirectError?.code || redirectError?.message);
              toast.error('فشل التحويل لتسجيل الدخول.');
              useAuthStore.setState({ loggingIn: false });
           });
         } else if (error.code === 'auth/popup-closed-by-user') {
-          toast.error(t('errors.popupClosed') || 'Popup closed by user.');
+          toast.info(t('errors.popupClosed') || 'تم إغلاق نافذة تسجيل الدخول.');
           useAuthStore.setState({ loggingIn: false });
-        } else if (error.code === 'auth/unauthorized-domain') {
-          toast.error(t('errors.unauthorizedDomain') || 'Unauthorized domain.');
+        } else if (error.code === 'auth/unauthorized-domain' || error.message?.includes('unauthorized-domain')) {
+          const currentHost = window.location.hostname;
+          setUnauthorizedDomain(currentHost);
+          toast.error(`النطاق (${currentHost}) غير مصرح به في Firebase Auth. يرجى إضافته إلى Authorized Domains في Firebase Console.`, {
+            duration: 8000
+          });
           useAuthStore.setState({ loggingIn: false });
         } else if (error.code === 'auth/network-request-failed') {
-          toast.error(t('errors.offline') || 'Network error.');
+          toast.error(t('errors.offline') || 'خطأ في الاتصال بالشبكة.');
           useAuthStore.setState({ loggingIn: false });
         } else {
-          toast.error(t('common.failed') || 'Login failed.');
+          console.warn('Login attempt:', error?.code || error?.message);
+          toast.error(t('common.failed') || 'فشل تسجيل الدخول.');
           useAuthStore.setState({ loggingIn: false });
         }
       });
@@ -221,6 +226,30 @@ export default function Login() {
         </div>
 
         <div className="space-y-4">
+          {unauthorizedDomain && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-xs text-amber-300 text-right space-y-2.5 animate-in fade-in" dir="rtl">
+              <p className="font-bold flex items-center gap-1.5 text-amber-400">
+                <span>⚠️ تنبيه: النطاق يحتاج تفعيل في Firebase</span>
+              </p>
+              <p className="text-zinc-300 leading-relaxed">
+                لتفعيل تسجيل الدخول على هذا الرابط (أو Cloudflare Pages)، انسخ النطاق بالأسفل وأضفه إلى قائمة <strong className="text-white">Authorized Domains</strong> في Firebase Console &gt; Authentication &gt; Settings:
+              </p>
+              <div className="flex items-center justify-between gap-2 bg-black/60 p-2 rounded-lg border border-zinc-800">
+                <code className="text-amber-200 text-xs font-mono select-all truncate">{unauthorizedDomain}</code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(unauthorizedDomain);
+                    toast.success('تم نسخ النطاق بنجاح');
+                  }}
+                  className="px-3 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded text-xs font-bold transition-colors shrink-0"
+                >
+                  نسخ النطاق
+                </button>
+              </div>
+            </div>
+          )}
+
           <button
             onClick={handleLogin}
             disabled={loggingIn}
