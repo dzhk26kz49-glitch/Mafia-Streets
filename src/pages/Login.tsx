@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuthStore, Role } from '../store/useAuthStore';
-import { Shield, Skull, Briefcase, Car, Users, Sparkles, UserPlus } from 'lucide-react';
+import { Shield, Skull, Briefcase, Car, Users, Sparkles, UserPlus, ExternalLink, Copy, Check, Globe, X, RefreshCw, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
 import { toast } from 'sonner';
@@ -25,6 +25,74 @@ export default function Login() {
   const [nickname, setNickname] = useState('');
   const [isCreatingProfile, setIsCreatingProfile] = useState(false);
   const [unauthorizedDomain, setUnauthorizedDomain] = useState<string | null>(null);
+  const [showDomainGuide, setShowDomainGuide] = useState(false);
+  const [copiedDomain, setCopiedDomain] = useState<string | null>(null);
+
+  const [liveCheckLoading, setLiveCheckLoading] = useState(false);
+  const [liveCheckResult, setLiveCheckResult] = useState<{
+    success: boolean;
+    projectId?: string;
+    authorizedDomains?: string[];
+    isHostAuthorized?: boolean;
+    error?: string;
+  } | null>(null);
+
+  const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+  const firebaseProjectId = firebaseConfig?.projectId || 'gen-lang-client-0652612897';
+  const consoleAuthSettingsUrl = `https://console.firebase.google.com/project/${firebaseProjectId}/authentication/settings`;
+
+  const requiredDomains = Array.from(new Set([
+    currentHost,
+    'workers.dev',
+    'pages.dev',
+    'mafia-streets.mx779969.workers.dev',
+    'ais-dev-a3lzou726gbx7sq3n4dxba-218257401845.europe-west1.run.app',
+  ].filter(Boolean)));
+
+  const copyToClipboard = (text: string, label: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedDomain(text);
+    toast.success(`تم نسخ ${label} بنجاح`);
+    setTimeout(() => setCopiedDomain(null), 2500);
+  };
+
+  const checkLiveDomains = async () => {
+    setLiveCheckLoading(true);
+    try {
+      const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects?key=${firebaseConfig.apiKey}`);
+      const data = await res.json();
+      if (data.authorizedDomains) {
+        const isAuthorized = data.authorizedDomains.some((d: string) => {
+          if (d === currentHost) return true;
+          if (currentHost.endsWith('.' + d)) return true;
+          return false;
+        });
+        setLiveCheckResult({
+          success: true,
+          projectId: data.projectId,
+          authorizedDomains: data.authorizedDomains,
+          isHostAuthorized: isAuthorized,
+        });
+        if (isAuthorized) {
+          toast.success('النطاق مصرح به بنجاح في Google! يمكنك تسجيل الدخول الآن.');
+        } else {
+          toast.warning('النطاق الحالي غير موجود في مشروع Firebase هذا لدى Google.');
+        }
+      } else {
+        setLiveCheckResult({
+          success: false,
+          error: data.error?.message || 'تعذر جلب النطاقات من Google'
+        });
+      }
+    } catch (e: any) {
+      setLiveCheckResult({
+        success: false,
+        error: e.message || 'خطأ في الاتصال'
+      });
+    } finally {
+      setLiveCheckLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (user && !profile && user.displayName && !nickname) {
@@ -33,32 +101,42 @@ export default function Login() {
   }, [user, profile]);
 
   const handleLogin = () => {
-    // Clear any previous unauthorized domain error so every retry starts fresh
     setUnauthorizedDomain(null);
     googleProvider.setCustomParameters({ prompt: 'select_account' });
     useAuthStore.setState({ loggingIn: true });
-
+    
     signInWithPopup(auth, googleProvider)
       .then(() => {
         setUnauthorizedDomain(null);
+        setShowDomainGuide(false);
         useAuthStore.setState({ loggingIn: false });
       })
       .catch((error: any) => {
-        useAuthStore.setState({ loggingIn: false });
+        const errorMsg = error?.message || '';
+        const errorStack = error?.stack || '';
+        const isUnauthorized = 
+          error.code === 'auth/unauthorized-domain' ||
+          errorMsg.includes('unauthorized-domain') ||
+          errorMsg.includes('authorized domain') ||
+          errorMsg.includes('_validateOrigin') ||
+          errorStack.includes('_validateOrigin') ||
+          errorMsg.includes('origin');
+
         if (error.code === 'auth/popup-blocked') {
           // Fallback to redirect if popup is blocked (common on mobile)
           toast.loading('جاري تحويلك لتسجيل الدخول...');
-          useAuthStore.setState({ loggingIn: true });
           signInWithRedirect(auth, googleProvider).catch((redirectError: any) => {
              console.warn('Redirect login error:', redirectError?.code || redirectError?.message);
+             const redMsg = redirectError?.message || '';
+             const redStack = redirectError?.stack || '';
              if (
                redirectError?.code === 'auth/unauthorized-domain' ||
-               redirectError?.message?.includes('unauthorized-domain') ||
-               redirectError?.message?.includes('_validateOrigin')
+               redMsg.includes('unauthorized-domain') ||
+               redStack.includes('_validateOrigin')
              ) {
-               const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
                setUnauthorizedDomain(currentHost);
-               toast.error(`النطاق (${currentHost}) غير مصرح به في مشروع Firebase (${firebaseConfig.projectId}).`);
+               setShowDomainGuide(true);
+               toast.error(`النطاق (${currentHost}) غير مصرح به في Firebase Auth.`);
              } else {
                toast.error('فشل التحويل لتسجيل الدخول.');
              }
@@ -66,23 +144,21 @@ export default function Login() {
           });
         } else if (error.code === 'auth/popup-closed-by-user') {
           toast.info(t('errors.popupClosed') || 'تم إغلاق نافذة تسجيل الدخول.');
-        } else if (
-          error.code === 'auth/unauthorized-domain' ||
-          error.message?.includes('unauthorized-domain') ||
-          error.message?.includes('authorized domain') ||
-          error.stack?.includes('_validateOrigin')
-        ) {
-          const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
+          useAuthStore.setState({ loggingIn: false });
+        } else if (isUnauthorized) {
           setUnauthorizedDomain(currentHost);
-          toast.error(
-            `النطاق (${currentHost}) غير مصرح به في مشروع Firebase (${firebaseConfig.projectId}). يرجى التحقق من إضافته إلى Authorized Domains في إعدادات المشروع الصحيح.`,
-            { duration: 8000 }
-          );
+          setShowDomainGuide(true);
+          toast.error(`النطاق (${currentHost}) غير مصرح به في Firebase Auth. يرجى إضافته إلى Authorized Domains في Firebase Console.`, {
+            duration: 8000
+          });
+          useAuthStore.setState({ loggingIn: false });
         } else if (error.code === 'auth/network-request-failed') {
           toast.error(t('errors.offline') || 'خطأ في الاتصال بالشبكة.');
+          useAuthStore.setState({ loggingIn: false });
         } else {
           console.warn('Login attempt:', error?.code || error?.message);
           toast.error(t('common.failed') || 'فشل تسجيل الدخول.');
+          useAuthStore.setState({ loggingIn: false });
         }
       });
   };
@@ -245,76 +321,157 @@ export default function Login() {
         </div>
 
         <div className="space-y-4">
-          {unauthorizedDomain && (
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-xs text-amber-300 text-right space-y-3 animate-in fade-in" dir="rtl">
-              <div className="flex items-center justify-between">
-                <p className="font-bold flex items-center gap-1.5 text-amber-400 text-sm">
-                  <span>⚠️ تنبيه: النطاق يحتاج تفعيل في Firebase</span>
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setUnauthorizedDomain(null)}
-                  className="text-zinc-400 hover:text-white text-xs px-2 py-0.5 rounded bg-zinc-800/80 transition-colors"
-                  title="إغلاق التنبيه"
-                >
-                  ✕ إغلاق
-                </button>
-              </div>
-
-              <p className="text-zinc-300 leading-relaxed">
-                رمز الخطأ الصادر من Firebase Auth هو <code className="text-amber-300 font-mono bg-black/40 px-1 py-0.5 rounded">auth/unauthorized-domain</code>.
-                لتفعيل الدخول، تأكد من إضافة هذا النطاق إلى قائمة <strong className="text-white">Authorized Domains</strong> داخل <strong className="text-white">مشروع Firebase الفعلي للعبة</strong>:
-              </p>
-
-              <div className="bg-black/60 rounded-lg p-2.5 border border-zinc-800 space-y-2 text-xs">
-                <div className="flex items-center justify-between gap-2 border-b border-zinc-800/60 pb-2">
-                  <span className="text-zinc-400">مشروع Firebase الفعلي:</span>
-                  <code className="text-red-400 font-mono font-bold select-all">{firebaseConfig.projectId}</code>
+          {(unauthorizedDomain || showDomainGuide) && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 text-xs text-amber-300 text-right space-y-3.5 animate-in fade-in relative" dir="rtl">
+              <div className="flex items-center justify-between gap-2 border-b border-amber-500/20 pb-2.5">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUnauthorizedDomain(null);
+                      setShowDomainGuide(false);
+                      setLiveCheckResult(null);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-white rounded-lg hover:bg-white/10 transition-colors"
+                    title="إغلاق التنبيه"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                  <p className="font-bold flex items-center gap-1.5 text-amber-400 text-sm">
+                    <span>⚠️ تفعيل النطاقات في Firebase Authentication</span>
+                  </p>
                 </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-zinc-400">النطاق المطلوب إضافته:</span>
-                  <code className="text-amber-200 font-mono font-bold select-all">{unauthorizedDomain}</code>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(unauthorizedDomain);
-                    toast.success('تم نسخ النطاق بنجاح');
-                  }}
-                  className="px-3 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
-                >
-                  <span>📋 نسخ النطاق</span>
-                </button>
-
                 <a
-                  href={`https://console.firebase.google.com/project/${firebaseConfig.projectId}/authentication/settings`}
+                  href={consoleAuthSettingsUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 bg-red-500/20 hover:bg-red-500/30 text-red-300 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded text-[11px] transition-colors shrink-0"
                 >
-                  <span>🔗 فتح إعدادات المشروع في Firebase Console</span>
+                  <span>فتح إعدادات المشروع</span>
+                  <ExternalLink className="w-3 h-3" />
                 </a>
+              </div>
 
+              {/* Crucial Note about Project ID */}
+              <div className="bg-zinc-950/80 p-2.5 rounded-lg border border-amber-500/20 text-[11px] leading-relaxed text-zinc-300 space-y-1">
+                <div className="flex items-center gap-1 text-amber-300 font-bold">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  <span>تنبيه هام حول معرّف المشروع:</span>
+                </div>
+                <p>
+                  المشروع المتصل به التطبيق حالياً هو: <code className="text-white bg-black/70 px-1 py-0.5 rounded font-mono font-bold text-amber-200 select-all">{firebaseProjectId}</code>
+                </p>
+                <p className="text-zinc-400">
+                  إذا أضفت النطاق في مشروع مختلف بحسابك، لن يتعرف عليه هذا التطبيق إلا إذا أضفته في نفس المشروع الموضح أعلاه، أو ربطت التطبيق بمشروعك عبر متغيرات البيئة في Cloudflare Pages.
+                </p>
+              </div>
+
+              <p className="text-zinc-300 leading-relaxed text-[11px]">
+                أضف النطاقات التالية إلى قائمة <strong className="text-white">Authorized Domains</strong> (إضافة النطاق الأب <code className="text-amber-200">workers.dev</code> أو <code className="text-amber-200">pages.dev</code> يفعل جميع النطاقات الفرعية تلقائياً):
+              </p>
+
+              {/* List of domains */}
+              <div className="space-y-1.5">
+                {requiredDomains.map((domain) => (
+                  <div
+                    key={domain}
+                    className="flex items-center justify-between gap-2 bg-black/60 px-2.5 py-1.5 rounded-lg border border-zinc-800 text-[11px]"
+                  >
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Globe className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                      <code className="text-amber-200 font-mono select-all truncate">{domain}</code>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(domain, domain)}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded text-[10px] font-semibold transition-colors shrink-0"
+                    >
+                      {copiedDomain === domain ? (
+                        <>
+                          <Check className="w-3 h-3 text-green-400" />
+                          <span className="text-green-400">تم النسخ</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3 h-3" />
+                          <span>نسخ</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex items-center justify-between gap-2 pt-1 border-t border-amber-500/10">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(requiredDomains.join('\n'), 'جميع النطاقات')}
+                  className="text-[11px] text-amber-400 hover:text-amber-300 underline font-medium flex items-center gap-1"
+                >
+                  <Copy className="w-3 h-3" />
+                  <span>نسخ جميع النطاقات معاً</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={checkLiveDomains}
+                  disabled={liveCheckLoading}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-zinc-800 hover:bg-zinc-700 text-amber-300 rounded text-[10px] font-semibold transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${liveCheckLoading ? 'animate-spin' : ''}`} />
+                  <span>{liveCheckLoading ? 'جاري الفحص من Google...' : '🔍 فحص النطاقات المصرح بها لدى Google'}</span>
+                </button>
+              </div>
+
+              {/* Live check result */}
+              {liveCheckResult && (
+                <div className={`p-2.5 rounded-lg border text-[11px] space-y-1.5 ${liveCheckResult.isHostAuthorized ? 'bg-green-500/10 border-green-500/30 text-green-300' : 'bg-red-500/10 border-red-500/30 text-red-300'}`}>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    {liveCheckResult.isHostAuthorized ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4 text-green-400" />
+                        <span>النطاق مصرح به بنجاح في Google!</span>
+                      </>
+                    ) : (
+                      <>
+                        <AlertCircle className="w-4 h-4 text-red-400" />
+                        <span>خوادم Google تؤكد أن النطاق الحالي ({currentHost}) غير مصرح به بعد في مشروع {firebaseProjectId}</span>
+                      </>
+                    )}
+                  </div>
+                  {liveCheckResult.authorizedDomains && (
+                    <div className="text-[10px] text-zinc-300 space-y-0.5">
+                      <p className="font-semibold text-zinc-400">النطاقات المعترف بها فعلياً لدى Google لهذا المشروع:</p>
+                      <div className="max-h-24 overflow-y-auto bg-black/60 p-1.5 rounded font-mono text-[10px] text-amber-200/90 space-y-0.5">
+                        {liveCheckResult.authorizedDomains.map((d) => (
+                          <div key={d} className="truncate">• {d}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Action buttons */}
+              <div className="flex items-center gap-2 pt-1 border-t border-amber-500/10">
                 <button
                   type="button"
                   onClick={handleLogin}
-                  className="px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white rounded-lg text-xs font-bold transition-colors mr-auto"
+                  disabled={loggingIn}
+                  className="flex-1 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold rounded-lg text-xs transition-colors flex items-center justify-center gap-1.5"
                 >
-                  🔄 إعادة المحاولة الآن
+                  <RefreshCw className={`w-3.5 h-3.5 ${loggingIn ? 'animate-spin' : ''}`} />
+                  <span>إعادة محاولة تسجيل الدخول الآن</span>
                 </button>
-              </div>
-
-              <div className="bg-amber-950/20 border border-amber-500/20 rounded-lg p-2 text-[11px] text-zinc-400 space-y-1">
-                <p className="text-amber-300/90 font-semibold">ملاحظات هامة لنشر Cloudflare Pages / Workers:</p>
-                <p>
-                  • تأكد من إضافة النطاق إلى مشروع <span className="text-white font-mono">{firebaseConfig.projectId}</span> تحديداً، وليس مشروعاً آخر في حسابك.
-                </p>
-                <p>
-                  • أدخل اسم النطاق فقط بدون <span className="text-zinc-300 font-mono">https://</span> وبدون شرطة مائلة (مثلاً: <span className="text-zinc-300 font-mono">{unauthorizedDomain}</span>).
-                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUnauthorizedDomain(null);
+                    setShowDomainGuide(false);
+                  }}
+                  className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-lg text-xs transition-colors"
+                >
+                  إخفاء التنبيه
+                </button>
               </div>
             </div>
           )}
@@ -322,7 +479,7 @@ export default function Login() {
           <button
             onClick={handleLogin}
             disabled={loggingIn}
-            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-200 text-black font-bold py-4 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full flex items-center justify-center gap-3 bg-white hover:bg-zinc-200 text-black font-bold py-4 px-4 rounded-xl transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {loggingIn ? (
               <span>{t('login.signingIn')}</span>
@@ -338,6 +495,18 @@ export default function Login() {
               </>
             )}
           </button>
+
+          {!showDomainGuide && !unauthorizedDomain && (
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => setShowDomainGuide(true)}
+                className="text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors inline-flex items-center gap-1"
+              >
+                <span>⚙️ إعداد النطاقات المصرح بها (Authorized Domains)</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
