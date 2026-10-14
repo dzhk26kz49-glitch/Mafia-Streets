@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && node -e \"import('node:fs').then(fs => { fs.mkdirSync('build', { recursive: true }); fs.cpSync('dist', 'build', { recursive: true, force: true }); console.log('Build artifacts successfully copied to build/'); })\"",
+    "deploy": "wrangler pages deploy dist",
     "start": "node server.ts",
     "preview": "vite preview",
     "lint": "tsc --noEmit"
