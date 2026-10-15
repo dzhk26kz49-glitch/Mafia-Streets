@@ -38,7 +38,7 @@ export default function Login() {
   } | null>(null);
 
   const currentHost = typeof window !== 'undefined' ? window.location.hostname : '';
-  const firebaseProjectId = firebaseConfig?.projectId || 'gen-lang-client-0652612897';
+  const firebaseProjectId = firebaseConfig?.projectId || 'gen-lang-client-0050850314';
   const consoleAuthSettingsUrl = `https://console.firebase.google.com/project/${firebaseProjectId}/authentication/settings`;
 
   const requiredDomains = Array.from(new Set([
