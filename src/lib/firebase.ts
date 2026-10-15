@@ -2,7 +2,6 @@ import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
-import { toast } from 'sonner';
 import defaultFirebaseConfig from '../../firebase-applet-config.json';
 
 export const firebaseConfig = defaultFirebaseConfig;
@@ -15,6 +14,10 @@ export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({
   prompt: 'select_account'
 });
+
+export function handleFirestoreError(error: unknown) {
+  console.error('Firestore Error: ', error);
+}
 
 export enum OperationType {
   CREATE = 'create',
