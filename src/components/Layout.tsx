@@ -229,9 +229,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         isSidebarOpen ? "translate-x-0" : "translate-x-full lg:translate-x-0"
       )}>
         <div className="p-6 border-b border-white/10 flex items-center justify-between">
-          <h1 className="text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500">
-            {t('login.title') || 'MAFIA STREETS'}
-          </h1>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-2xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-orange-500">
+              {t('login.title') || 'MAFIA STREETS'}
+            </h1>
+            <span className="text-[10px] font-mono text-zinc-500 px-1.5 py-0.5 rounded bg-white/5 border border-white/10">v1.0.0</span>
+          </div>
           <button onClick={() => setIsSidebarOpen(false)} className="lg:hidden text-zinc-400 hover:text-white">
             <X size={24} />
           </button>
