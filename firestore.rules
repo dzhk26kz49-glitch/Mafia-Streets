@@ -138,11 +138,27 @@ service cloud.firestore {
       allow read: if isSignedIn() && (
         resource.data.senderId == request.auth.uid || 
         resource.data.receiverId == request.auth.uid ||
-        isAdmin()
+        resource.data.receiverId == 'all' ||
+        (request.auth.token.email != null && resource.data.receiverEmail == request.auth.token.email) ||
+        (request.auth.token.email != null && resource.data.senderEmail == request.auth.token.email) ||
+        (resource.data.participants != null && request.auth.uid in resource.data.participants) ||
+        isAdmin() ||
+        isSystemAdmin()
       );
-      allow create: if isSignedIn() && isValidId(messageId) && incoming().senderId == request.auth.uid && 
-                       incoming().text is string && incoming().text.size() > 0 && incoming().text.size() <= 2000;
-      allow delete: if isAdmin() || (isSignedIn() && resource.data.senderId == request.auth.uid);
+      allow create: if isSignedIn() && isValidId(messageId);
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        isSystemAdmin() ||
+        resource.data.receiverId == request.auth.uid ||
+        resource.data.receiverId == 'all' ||
+        resource.data.senderId == request.auth.uid ||
+        (request.auth.token.email != null && resource.data.receiverEmail == request.auth.token.email) ||
+        (resource.data.participants != null && request.auth.uid in resource.data.participants)
+      );
+      allow delete: if isAdmin() || isSystemAdmin() || (isSignedIn() && (
+        resource.data.senderId == request.auth.uid ||
+        resource.data.receiverId == request.auth.uid
+      ));
     }
 
     match /gangs/{gangId} {

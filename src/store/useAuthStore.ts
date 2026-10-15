@@ -520,7 +520,13 @@ interface AuthState {
   loggingIn: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  createProfile: (role: Role, nickname: string) => Promise<void>;
+  createProfile: (
+    role: Role, 
+    nickname: string, 
+    gender?: 'male' | 'female', 
+    customPhotoURL?: string,
+    extraData?: { birthdate?: string; country?: string }
+  ) => Promise<void>;
   setWelcomeMessageSeen: () => Promise<void>;
   equipItem: (type: string, itemId: string) => Promise<void>;
   batchEquipItems: (items: { type: string; itemId: string }[]) => Promise<void>;
@@ -1218,7 +1224,13 @@ export const useAuthStore = create<AuthState>((set, get) => {
         console.error("Logout failed:", error);
       }
     },
-    createProfile: async (role: Role, nickname: string) => {
+    createProfile: async (
+      role: Role, 
+      nickname: string, 
+      gender: 'male' | 'female' = 'male', 
+      customPhotoURL?: string,
+      extraData?: { birthdate?: string; country?: string }
+    ) => {
       const { user } = get();
       if (!user) return;
 
@@ -1234,9 +1246,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
       let assignedRole: Role = role;
 
       if (role === 'Admin' && !isAdmin) {
-        toast.error('ممنوع تعيين او اختيار رتبة (مدير) فقد صلاحيات المدير للعبة حصراً من لوحة الادارة');
-        const randomIndex = Math.floor(Math.random() * validRoles.length);
-        assignedRole = validRoles[randomIndex];
+        assignedRole = 'Boss';
       }
 
       if (role === 'Random' || !role || (!validRoles.includes(role) && role !== 'Admin')) {
@@ -1255,14 +1265,11 @@ export const useAuthStore = create<AuthState>((set, get) => {
       const nameSnapshot = await getDocs(nameQuery);
       
       if (!nameSnapshot.empty) {
-        // If it's an admin and '𝑀𝓊𝓈𝓉𝒶𝒻𝒶' is taken, try a unique variant or their nickname
         if (isAdmin && requestedName === '𝑀𝓊𝓈𝓉𝒶𝒻𝒶') {
           requestedName = nickname.trim() || user.displayName || `Admin_${user.uid.slice(0, 4)}`;
-          // Re-check for the fallback name
           const fallbackQuery = query(collection(db, 'users_public'), where('displayName', '==', requestedName));
           const fallbackSnapshot = await getDocs(fallbackQuery);
           if (!fallbackSnapshot.empty) {
-            // If even fallback is taken (unlikely), append UID
             requestedName = `${requestedName}_${user.uid.slice(0, 4)}`;
           }
         } else {
@@ -1272,18 +1279,25 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
       const settingsDoc = await getDoc(doc(db, 'server_settings', 'backup'));
       const settingsData = settingsDoc.data();
-      const startingMoney = settingsData?.startingMoney || 5000000;
+      let startingMoney = settingsData?.startingMoney || 5000000;
+      
+      // Trader role perk: +1M extra starting cash
+      if (assignedRole === 'Trader') {
+        startingMoney += 1000000;
+      }
+
+      const finalPhoto = customPhotoURL || user.photoURL || getRealisticAvatar(user.uid, gender, 25);
 
       const newProfile: UserProfile = {
         uid: user.uid,
         displayName: requestedName,
-        photoURL: user.photoURL || getRealisticAvatar(user.uid, 'male', 25),
+        photoURL: finalPhoto,
         email: user.email || '',
         role: isAdmin && assignedRole === 'Admin' ? 'Admin' : assignedRole,
         level: 1,
-        reputation: 0,
-        cleanMoney: startingMoney, // Starting money: 5M
-        dirtyMoney: 0, // Starting money: 0
+        reputation: assignedRole === 'Boss' ? 50 : 0,
+        cleanMoney: startingMoney,
+        dirtyMoney: 0,
         bankBalance: 0,
         investments: {
           amount: 0,
@@ -1350,7 +1364,13 @@ export const useAuthStore = create<AuthState>((set, get) => {
         createdAt: Timestamp.now(),
         lastLoginAt: Timestamp.now(),
         hasESim: false,
-        gender: 'male'
+        gender: gender || 'male',
+        country: extraData?.country || 'iq',
+        birthdate: extraData?.birthdate || '1995-05-15',
+        docNumber: `ID-${(extraData?.country || 'iq').toUpperCase()}-${user.uid.slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
+        documents: {
+          idCard: true,
+        }
       };
 
       try {

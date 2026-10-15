@@ -43,45 +43,49 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       handleFirestoreError(error, OperationType.GET, 'government/current');
     });
 
-    if (!profile) return;
-    const q = query(
-      collection(db, 'messages'),
-      where('receiverId', 'in', [profile.uid, 'all']),
-      where('read', '==', false)
-    );
+    let unsubscribe: (() => void) | undefined;
+    if (profile?.uid) {
+      const q = query(
+        collection(db, 'messages'),
+        where('receiverId', 'in', [profile.uid, 'all']),
+        where('read', '==', false)
+      );
 
-    let initialLoad = true;
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setUnreadCount(snapshot.size);
-      
-      if (!initialLoad) {
-        snapshot.docChanges().forEach((change) => {
-          if (change.type === 'added') {
-            const msg = change.doc.data();
-            toast.custom((t) => (
-              <div className="flex items-center gap-4 bg-black/40 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-4 w-full max-w-md cursor-pointer" onClick={() => { toast.dismiss(t); navigate('/messages'); }}>
-                <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
-                  <MessageCircle className="w-6 h-6 text-blue-400" />
+      let initialLoad = true;
+      unsubscribe = onSnapshot(q, (snapshot) => {
+        setUnreadCount(snapshot.size);
+        
+        if (!initialLoad) {
+          snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+              const msg = change.doc.data();
+              toast.custom((t) => (
+                <div className="flex items-center gap-4 bg-black/40 backdrop-blur-2xl border border-white/10 shadow-[0_8px_32px_rgba(0,0,0,0.4)] rounded-3xl p-4 w-full max-w-md cursor-pointer" onClick={() => { toast.dismiss(t); navigate('/messages'); }}>
+                  <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center flex-shrink-0">
+                    <MessageCircle className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-bold text-white truncate">{msg.senderName || 'إشعار جديد'}</p>
+                    <p className="text-sm text-white/70 truncate">{msg.content || msg.text}</p>
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-white truncate">{msg.senderName || 'إشعار جديد'}</p>
-                  <p className="text-sm text-white/70 truncate">{msg.content || msg.text}</p>
-                </div>
-              </div>
-            ), { duration: 4000 });
-          }
-        });
-      }
-      initialLoad = false;
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'messages');
-    });
+              ), { duration: 4000 });
+            }
+          });
+        }
+        initialLoad = false;
+      }, (error) => {
+        handleFirestoreError(error, OperationType.LIST, 'messages');
+      });
+    }
 
     return () => {
-      unsubscribe();
+      if (unsubscribe) {
+        unsubscribe();
+      }
       unsubGov();
     };
-  }, [user]);
+  }, [user, profile?.uid]);
 
   const isRTL = true;
 
