@@ -137,10 +137,11 @@ export default function Login() {
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
-      <div className="max-w-md w-full space-y-8 bg-zinc-950/80 backdrop-blur-xl p-8 rounded-2xl border border-zinc-800 shadow-2xl relative z-10 text-center">
-        <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-orange-500 to-red-600 uppercase mb-6">
+      <div className="max-w-md w-full space-y-6 bg-zinc-950/80 backdrop-blur-xl p-8 rounded-2xl border border-zinc-800 shadow-2xl relative z-10 text-center">
+        <h1 className="text-5xl font-black text-transparent bg-clip-text bg-gradient-to-r from-red-600 via-orange-500 to-red-600 uppercase mb-2">
           MAFIA STREETS
         </h1>
+        <p className="text-zinc-400 text-sm mb-6">لعبة استراتيجية المافيا الكبرى</p>
         <button
           onClick={handleLogin}
           disabled={loggingIn}
@@ -160,6 +161,14 @@ export default function Login() {
             </>
           )}
         </button>
+
+        {/* Legal Disclaimer */}
+        <div className="mt-6 pt-6 border-t border-zinc-900 text-right" dir="rtl">
+          <h3 className="text-xs font-bold text-zinc-400 mb-2">{t('disclaimerTitle', 'إخلاء مسؤولية قانوني')}</h3>
+          <div className="bg-black/50 p-3 rounded-xl border border-zinc-900 text-[11px] text-zinc-500 max-h-32 overflow-y-auto leading-relaxed whitespace-pre-line">
+            {t('disclaimerText', 'تُعد لعبة MAFIA STREETS عملاً خيالياً لأغراض الترفيه فقط، ولا تمثل أو تعكس الواقع بأي شكل من الأشكال. إن جميع الشخصيات، الأحداث، المواقع، والحوارات الواردة في اللعبة هي من نسج الخيال، وأي تشابه مع أشخاص أو أحداث حقيقية هو محض صدفة غير مقصودة.\n\nباستخدامك لهذه اللعبة، فإنك توافق صراحةً على أن استخدامك لها يتم على مسؤوليتك الشخصية بالكامل، ولا تتحمل إدارة اللعبة أو مطوروها أو ناشروها أي مسؤولية قانونية أو تعويضية عن أي أضرار مباشرة أو غير مباشرة قد تنشأ عن استخدام اللعبة أو سوء استخدامها أو تفسير محتواها.\n\nلا تتحمل إدارة اللعبة أي مسؤولية عن أي محتوى يتم إدراكه أو تفسيره بشكل مخالف لغرضه الترفيهي، كما لا تتحمل أي مسؤولية عن تصرفات المستخدمين داخل اللعبة أو خارجها.\n\nهذه اللعبة مخصصة حصراً للأشخاص الذين تبلغ أعمارهم 18 عاماً فما فوق. وبمجرد قيامك بالتسجيل أو استخدام اللعبة، فإنك تقرّ وتتعهد بأنك قد بلغت السن القانونية (18 عاماً أو أكثر). ولا تتحمل إدارة اللعبة أي مسؤولية عن دخول القاصرين أو استخدامهم للعبة بأي شكل من الأشكال، وتُعد مسؤولية التحقق من العمر تقع على المستخدم نفسه أو ولي أمره.\n\nتحتفظ إدارة اللعبة بالحق في تعديل هذا الإخلاء أو شروط الاستخدام في أي وقت دون إشعار مسبق، ويُعد استمرارك في استخدام اللعبة موافقة ضمنية على أي تحديثات يتم إجراؤها.')}
+          </div>
+        </div>
       </div>
     </div>
   );
