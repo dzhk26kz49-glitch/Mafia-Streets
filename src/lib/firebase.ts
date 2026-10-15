@@ -3,20 +3,19 @@ import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { toast } from 'sonner';
-import defaultFirebaseConfig from '../../firebase-applet-config.json';
 
+// المفاتيح المباشرة والمطابقة لمشروعك الصحيح
 export const firebaseConfig = {
-  projectId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_PROJECT_ID) || defaultFirebaseConfig.projectId,
-  appId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_APP_ID) || defaultFirebaseConfig.appId,
-  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || defaultFirebaseConfig.apiKey,
-  authDomain: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_AUTH_DOMAIN) || defaultFirebaseConfig.authDomain,
-  firestoreDatabaseId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIRESTORE_DATABASE_ID) || defaultFirebaseConfig.firestoreDatabaseId,
-  storageBucket: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_STORAGE_BUCKET) || defaultFirebaseConfig.storageBucket,
-  messagingSenderId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_MESSAGING_SENDER_ID) || defaultFirebaseConfig.messagingSenderId,
+  apiKey: "AIzaSyD5ZdLhnIpYDPt7pZFeqWU3TDxuJOYcEAo",
+  authDomain: "gen-lang-client-0050850314.firebaseapp.com",
+  projectId: "gen-lang-client-0050850314",
+  storageBucket: "gen-lang-client-0050850314.firebasestorage.app",
+  messagingSenderId: "138761784517",
+  appId: "1:138761784517:web:d904b3004dce17396174ac"
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const db = getFirestore(app);
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -60,7 +59,6 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
       duration: 10000,
       id: 'quota-error'
     });
-    // Don't throw for quota errors to prevent white screen
     return;
   }
 
@@ -85,4 +83,3 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }
-
