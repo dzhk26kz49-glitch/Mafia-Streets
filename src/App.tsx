@@ -43,7 +43,10 @@ import Protection from './pages/Protection';
 import Labs from './pages/Labs';
 import Militias from './pages/Militias';
 import MilitiaStrategyMap from './pages/MilitiaStrategyMap';
+import RoleSkills from './pages/RoleSkills';
 import UndergroundPage from './pages/UndergroundPage';
+import BlackMarket from './pages/BlackMarket';
+import TurfWars from './pages/TurfWars';
 
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, profile, loading } = useAuthStore();
@@ -122,6 +125,7 @@ function App() {
           <Route path="/shop" element={<PrivateRoute><CityMall /></PrivateRoute>} />
           <Route path="/profile" element={<PrivateRoute><Profile /></PrivateRoute>} />
           <Route path="/character" element={<PrivateRoute><Character /></PrivateRoute>} />
+          <Route path="/role-skills" element={<PrivateRoute><RoleSkills /></PrivateRoute>} />
           <Route path="/map" element={<PrivateRoute><InfluenceMap /></PrivateRoute>} />
           <Route path="/properties" element={<PrivateRoute><Properties /></PrivateRoute>} />
           <Route path="/market" element={<PrivateRoute><Market /></PrivateRoute>} />
@@ -151,6 +155,10 @@ function App() {
           <Route path="/attack/:id" element={<PrivateRoute><Attack /></PrivateRoute>} />
           <Route path="/admin" element={<PrivateRoute><Admin /></PrivateRoute>} />
           <Route path="/underground" element={<PrivateRoute><UndergroundPage /></PrivateRoute>} />
+          <Route path="/black-market" element={<PrivateRoute><BlackMarket /></PrivateRoute>} />
+          <Route path="/auctions" element={<PrivateRoute><BlackMarket /></PrivateRoute>} />
+          <Route path="/turf-wars" element={<PrivateRoute><TurfWars /></PrivateRoute>} />
+          <Route path="/turfs" element={<PrivateRoute><TurfWars /></PrivateRoute>} />
           
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

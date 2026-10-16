@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, formatMoney, formatDate } from '../lib/utils';
 import { useAuthStore } from '../store/useAuthStore';
@@ -2073,6 +2074,26 @@ export default function Gangs() {
                     {t('gangs.availableTargets')}: <span className="text-white ml-1">{allGangs.filter(g => g.id !== gang.id).length}</span>
                   </p>
                 </div>
+              </div>
+
+              {/* Turf Wars Geographic Dominance Banner */}
+              <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-red-950/40 via-zinc-900 to-amber-950/30 border border-red-500/30 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
+                <div className="space-y-2 text-center md:text-right">
+                  <div className="inline-flex items-center gap-2 px-3 py-1 bg-red-600/20 text-red-400 border border-red-500/30 rounded-full text-[10px] font-black uppercase tracking-wider">
+                    <span>👑 المرحلة الثالثة: السيطرة الإقليمية</span>
+                  </div>
+                  <h3 className="text-xl font-black text-white">حروب النفوذ والسيطرة على أحياء بغداد</h3>
+                  <p className="text-xs text-zinc-400 max-w-xl">
+                    قد عصابتك لاقتحام أحياء العاصمة السبعة (الكرادة، المنصور، البتاوين، الشورجة، الكاظمية، الجادرية، الكرخ)، وافرض إتاوات الحماية اليومية وطوّر حاميات الدفاع!
+                  </p>
+                </div>
+                <Link
+                  to="/turf-wars"
+                  className="px-6 py-3.5 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-red-600/25 flex items-center gap-2 whitespace-nowrap transition-all hover:scale-105"
+                >
+                  <Swords size={18} />
+                  <span>دخول ساحة حرب الأحياء ⚔️</span>
+                </Link>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

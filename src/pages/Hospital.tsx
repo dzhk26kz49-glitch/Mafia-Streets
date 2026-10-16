@@ -29,6 +29,7 @@ import {
 import { useTranslation } from 'react-i18next';
 import { formatNumber, formatMoney, safeToDate } from '../lib/utils';
 import { getVIPDiscount } from '../lib/vip';
+import { getActiveRolePerks } from '../lib/rolePerks';
 import PlayerAvatar from '../components/PlayerAvatar';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
@@ -137,8 +138,13 @@ export default function Hospital() {
       toast.error(t('hospital.alreadyFull'));
       return;
     }
+    const perks = getActiveRolePerks(profile);
     let cost = health === 0 ? 100000 : 10000;
     cost = Math.floor(cost * getVIPDiscount(profile.vipLevel as any));
+    // Criminal Rapid Recovery (-35% hospital costs per level)
+    if (perks.crimRecoverySpeedPercent > 0) {
+      cost = Math.floor(cost * (1 - Math.min(0.7, (perks.crimRecoverySpeedPercent / 100) * 0.5)));
+    }
     await heal(cost);
   };
 
@@ -169,15 +175,23 @@ export default function Hospital() {
     }
 
     try {
+      const perks = getActiveRolePerks(profile);
+      let healAmount = drug.heal;
+      // Criminal Rapid Recovery (+35% extra heal efficiency per level)
+      if (perks.crimRecoverySpeedPercent > 0) {
+        healAmount = Math.floor(healAmount * (1 + (perks.crimRecoverySpeedPercent / 100)));
+      }
+
       const docRef = doc(db, 'users', profile.uid);
-      const newHealth = Math.min(100, health + drug.heal);
+      const newHealth = Math.min(100, health + healAmount);
       await updateDoc(docRef, {
         health: newHealth,
         [`inventory.drugs.${drug.id}`]: increment(-1),
         hospitalizedUntil: newHealth >= 100 ? null : profile.hospitalizedUntil,
         city: newHealth >= 100 ? 'baghdad' : profile.city
       });
-      toast.success(t('common.success'));
+      const bonusMsg = perks.crimRecoverySpeedPercent > 0 ? ` (شامل +${perks.crimRecoverySpeedPercent}% تعافي خارق 🩸)` : '';
+      toast.success(t('common.success') + bonusMsg);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
     }

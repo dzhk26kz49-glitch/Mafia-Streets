@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, formatMoney, safeToMillis } from '../lib/utils';
 import { getVIPMultiplier } from '../lib/vip';
+import { getActiveRolePerks } from '../lib/rolePerks';
 import { useAuthStore, BuiltProperty } from '../store/useAuthStore';
 import { doc, updateDoc, getDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { MARKET_ITEMS } from '../lib/items';
 import { toast } from 'sonner';
+import { soundEngine } from '../services/soundEngine';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Building2, Shield, Landmark, Crosshair, Beaker, Home, RefreshCw, Wrench, ChevronDown, ChevronUp, Users, CheckCircle, Skull, Briefcase, Zap, Target, DollarSign, TrendingUp, AlertTriangle, Car } from 'lucide-react';
 
@@ -349,7 +351,9 @@ export default function Properties() {
     const lastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || currentTime);
     const minutesPassed = Math.floor((currentTime - lastCollection) / (1000 * 60));
     const minuteProfit = calculateMinuteProfit(property);
-    const profit = Math.floor(minuteProfit * minutesPassed);
+    const perks = getActiveRolePerks(profile);
+    const profitMultiplier = 1 + (perks.traderProfitBonusPercent / 100);
+    const profit = Math.floor(minuteProfit * profitMultiplier * minutesPassed);
 
     if (profit < 1) {
       toast.error(t('properties.noProfits'));
@@ -490,7 +494,9 @@ export default function Properties() {
     setProcessing(true);
 
     const baseMinuteProfit = calculateMinuteProfit(property);
-    const minuteProfit = Math.floor(baseMinuteProfit * getVIPMultiplier(profile.vipLevel as any));
+    const perks = getActiveRolePerks(profile);
+    const traderMultiplier = 1 + (perks.traderProfitBonusPercent / 100);
+    const minuteProfit = Math.floor(baseMinuteProfit * getVIPMultiplier(profile.vipLevel as any) * traderMultiplier);
     const totalProfit = minuteProfit * minutesPassed;
 
     const updatedProperties = builtProperties.map(p => {
@@ -540,7 +546,9 @@ export default function Properties() {
         'familyFinances.income': increment(totalProfit),
         'familyFinances.lastUpdate': now
       });
-      toast.success(t('properties.profitsCollected', { amount: formatNumber(totalProfit) }));
+      soundEngine.playCashSound();
+      const bonusMsg = perks.traderProfitBonusPercent > 0 ? ` (شامل +${perks.traderProfitBonusPercent}% حنكة التاجر 📈)` : '';
+      toast.success(t('properties.profitsCollected', { amount: formatNumber(totalProfit) }) + bonusMsg);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
     } finally {

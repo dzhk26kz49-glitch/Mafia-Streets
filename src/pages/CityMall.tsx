@@ -19,6 +19,7 @@ import {
 } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { formatMoney } from '../lib/utils';
+import { getActiveRolePerks } from '../lib/rolePerks';
 import { toast } from 'sonner';
 import clsx from 'clsx';
 import { 
@@ -267,8 +268,13 @@ export default function CityMall() {
       return;
     }
 
-    const cost = Number(product.cost || 0);
-    if ((profile.cleanMoney || 0) < cost) {
+    const perks = getActiveRolePerks(profile);
+    let finalCost = Number(product.cost || 0);
+    if (perks.traderMarketDiscountPercent > 0) {
+      finalCost = Math.floor(finalCost * (1 - (perks.traderMarketDiscountPercent / 100)));
+    }
+
+    if ((profile.cleanMoney || 0) < finalCost) {
       toast.error('ليس لديك أموال نظيفة كافية لإتمام الشراء!');
       return;
     }
@@ -279,7 +285,7 @@ export default function CityMall() {
       const actualProductId = product.originalId || String(product.id).replace('deal_', '');
 
       await updateDoc(userRef, {
-        cleanMoney: increment(-cost),
+        cleanMoney: increment(-finalCost),
         prestige: increment(Number(product.prestige || 0))
       });
 

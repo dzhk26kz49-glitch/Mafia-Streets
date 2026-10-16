@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuthStore } from '../store/useAuthStore';
 import { doc, updateDoc, onSnapshot, collection, query, getDocs } from 'firebase/firestore';
@@ -8,6 +9,7 @@ import { MARKET_ITEMS } from '../lib/items';
 import { toast } from 'sonner';
 import clsx from 'clsx';
 import { Shield, Sword, Shirt, Glasses, Watch, Briefcase, Gem, Crosshair, User, Settings, Loader2, Crown, Footprints, Headphones, RefreshCw, Trash2, Tag, Sparkles, Compass } from 'lucide-react';
+import RoleActivePerksBar from '../components/RoleActivePerksBar';
 
 
 const SLOTS = [
@@ -302,15 +304,24 @@ export default function Character() {
           <p className="text-zinc-400">إدارة مظهر وتجهيزات {profile?.displayName}</p>
         </div>
         <div className="flex items-center gap-3">
+          <Link 
+            to="/role-skills"
+            className="px-4 py-2 bg-gradient-to-r from-red-600 to-amber-600 hover:from-red-500 hover:to-amber-500 text-white font-bold rounded-xl shadow-lg shadow-red-600/20 transition-all flex items-center gap-2 text-sm"
+          >
+            <Sparkles size={18} />
+            شجرة مهارات وعقود الدور
+          </Link>
           <button 
             onClick={() => setShowGenderModal(true)}
-            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-colors flex items-center gap-2 text-sm"
+            className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl transition-colors flex items-center gap-2 text-sm cursor-pointer"
           >
             <Settings size={18} />
             تغيير الجنس
           </button>
         </div>
       </div>
+
+      <RoleActivePerksBar />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Avatar Display Column */}

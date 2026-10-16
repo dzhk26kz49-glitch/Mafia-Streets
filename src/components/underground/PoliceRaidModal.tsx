@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Siren, 
@@ -18,6 +18,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { toast } from 'sonner';
 import { formatMoney } from '../../lib/utils';
 import { IRAQI_POLICE_BARKS } from '../../services/npcDialogues';
+import { soundEngine } from '../../services/soundEngine';
 
 interface PoliceRaidModalProps {
   raid: PoliceRaidEvent | null;
@@ -29,6 +30,12 @@ export const PoliceRaidModal: React.FC<PoliceRaidModalProps> = ({ raid, onClose 
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultMessage, setResultMessage] = useState<string | null>(null);
   const [actionDone, setActionDone] = useState(false);
+
+  useEffect(() => {
+    if (raid) {
+      soundEngine.playPoliceSirenSound();
+    }
+  }, [raid?.id]);
 
   if (!raid || !profile) return null;
 

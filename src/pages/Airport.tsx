@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { getActiveRolePerks } from '../lib/rolePerks';
 
 const CITIES = [
   { id: 'baghdad', name: 'Baghdad', price: 5000, duration: 300 }, // 5 mins
@@ -69,8 +70,16 @@ export default function Airport() {
       const drugs = profile.inventory?.drugs || {};
       const hasDrugs = Object.values(drugs).some((amount) => amount > 0);
 
+      const perks = getActiveRolePerks(profile);
+
       if (hasDrugs) {
-        const caught = Math.random() < 0.5; // 50% chance
+        let caughtChance = 0.5; // 50% base chance
+        // Smuggler Customs Evasion perk (+20% protection per level)
+        if (perks.smugglerCustomsProtectionPercent > 0) {
+          caughtChance = Math.max(0.05, caughtChance * (1 - (perks.smugglerCustomsProtectionPercent / 100)));
+        }
+
+        const caught = Math.random() < caughtChance;
         if (caught) {
           const jailEndTime = Date.now() + 20 * 60 * 1000;
           await updateDoc(doc(db, 'users', profile.uid), {
@@ -85,6 +94,8 @@ export default function Airport() {
           });
           toast.error(t('airport.caughtSmuggling'));
           return;
+        } else if (perks.smugglerCustomsProtectionPercent > 0) {
+          toast.success('نجحت في اجتياز التفتيش الجمركي بفضل مهارة التمويه! 🛄');
         }
       }
 
@@ -94,6 +105,11 @@ export default function Airport() {
         if (['Signature', 'Infinite'].includes(type)) {
           finalDuration = Math.floor(duration * 0.8); // 20% faster
         }
+      }
+
+      // Smuggler Covert Corridors perk (-25% flight duration per level)
+      if (perks.smugglerTravelReductionPercent > 0) {
+        finalDuration = Math.max(10, Math.floor(finalDuration * (1 - (perks.smugglerTravelReductionPercent / 100))));
       }
 
       const travelingUntil = Date.now() + finalDuration * 1000;

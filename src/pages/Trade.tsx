@@ -5,8 +5,10 @@ import { useAuthStore } from '../store/useAuthStore';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { toast } from 'sonner';
+import { getActiveRolePerks } from '../lib/rolePerks';
 import { Globe, Package, ArrowRight, ArrowLeft, ShieldCheck, Lock, TrendingUp, AlertCircle, Clock } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { soundEngine } from '../services/soundEngine';
 
 const COUNTRIES = [
   { id: 'colombia', flag: '🇨🇴', goods: [{ id: 'drugs', price: 15000, type: 'drugs' }] },
@@ -64,8 +66,13 @@ export default function Trade() {
   const handleTrade = async (type: string, price: number, action: 'buy' | 'sellAll', quantity: number = 1) => {
     if (!profile) return;
 
-    if (profile.lastTradeTime && Date.now() - profile.lastTradeTime < COOLDOWN_MS) {
-      const remaining = Math.ceil((COOLDOWN_MS - (Date.now() - profile.lastTradeTime)) / 1000);
+    const perks = getActiveRolePerks(profile);
+    const effectiveCooldown = perks.smugglerTravelReductionPercent > 0 
+      ? Math.max(2000, Math.floor(COOLDOWN_MS * (1 - (perks.smugglerTravelReductionPercent / 100))))
+      : COOLDOWN_MS;
+
+    if (profile.lastTradeTime && Date.now() - profile.lastTradeTime < effectiveCooldown) {
+      const remaining = Math.ceil((effectiveCooldown - (Date.now() - profile.lastTradeTime)) / 1000);
       toast.error(t('trade.cooldown', { time: remaining }));
       return;
     }
@@ -97,6 +104,7 @@ export default function Trade() {
           [updatePath]: currentStock + quantity,
           lastTradeTime: Date.now()
         });
+        soundEngine.playBlackMarketDealSound();
         toast.success(t('trade.boughtMultiple', { count: quantity, item: t(`trade.goods.${type}`) }) || t('trade.bought', { item: t(`trade.goods.${type}`) }));
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
@@ -107,7 +115,13 @@ export default function Trade() {
         return;
       }
 
-      const sellPricePerUnit = Math.floor(price * 1.2);
+      let profitMultiplier = 1.2;
+      // Smuggler Black Brokerage perk (+20% per level)
+      if (perks.smugglerTradeProfitBonusPercent > 0) {
+        profitMultiplier += (perks.smugglerTradeProfitBonusPercent / 100);
+      }
+
+      const sellPricePerUnit = Math.floor(price * profitMultiplier);
       const totalSellPrice = sellPricePerUnit * currentStock;
 
       try {
@@ -117,7 +131,11 @@ export default function Trade() {
           [updatePath]: 0,
           lastTradeTime: Date.now()
         });
-        toast.success(t('trade.soldAll', { count: currentStock, item: t(`trade.goods.${type}`), price: formatMoney(totalSellPrice) }) || t('trade.sold', { item: t(`trade.goods.${type}`), price: formatMoney(totalSellPrice) }));
+        soundEngine.playBlackMarketDealSound();
+        const bonusMsg = perks.smugglerTradeProfitBonusPercent > 0 
+          ? ` (شامل +${perks.smugglerTradeProfitBonusPercent}% وساطة المهرب 📦)` 
+          : '';
+        toast.success((t('trade.soldAll', { count: currentStock, item: t(`trade.goods.${type}`), price: formatMoney(totalSellPrice) }) || t('trade.sold', { item: t(`trade.goods.${type}`), price: formatMoney(totalSellPrice) })) + bonusMsg);
       } catch (error) {
         handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
       }

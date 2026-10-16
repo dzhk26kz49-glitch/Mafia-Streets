@@ -9,6 +9,7 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { motion, AnimatePresence } from 'motion/react';
 
 import { MARKET_ITEMS } from '../lib/items';
+import { getActiveRolePerks } from '../lib/rolePerks';
 
 const COMPUTER_SPECS = {
   processors: [
@@ -343,6 +344,12 @@ export default function Market() {
     // Apply Tax Holiday discount
     if (govData?.taxHoliday) {
       finalPrice = Math.floor(finalPrice * 0.90); // 10% discount
+    }
+
+    // Apply Trader Monopoly Perk (-12% discount per level)
+    const perks = getActiveRolePerks(profile);
+    if (perks.traderMarketDiscountPercent > 0) {
+      finalPrice = Math.floor(finalPrice * (1 - (perks.traderMarketDiscountPercent / 100)));
     }
 
     if (item.rare && !profile.vipLevel && profile.role !== 'Admin') {

@@ -284,6 +284,25 @@ export interface UserProfile {
     kills: number;
     operations: number;
   };
+  roleSkills?: {
+    skillPoints: number;
+    skills: Record<string, number>;
+    contracts?: Array<{
+      id: string;
+      roleId: Role;
+      title: string;
+      description: string;
+      rewardCash: number;
+      rewardRep: number;
+      rewardSkillPoints: number;
+      difficulty: 'easy' | 'medium' | 'hard';
+      durationSeconds: number;
+      startedAt?: number;
+      completed: boolean;
+      claimed: boolean;
+    }>;
+    lastContractsRefresh?: number;
+  };
   equipped?: {
     weapon1?: string | null;
     weapon2?: string | null;
@@ -520,13 +539,7 @@ interface AuthState {
   loggingIn: boolean;
   login: () => Promise<void>;
   logout: () => Promise<void>;
-  createProfile: (
-    role: Role, 
-    nickname: string, 
-    gender?: 'male' | 'female', 
-    customPhotoURL?: string,
-    extraData?: { birthdate?: string; country?: string }
-  ) => Promise<void>;
+  createProfile: (role: Role, nickname: string) => Promise<void>;
   setWelcomeMessageSeen: () => Promise<void>;
   equipItem: (type: string, itemId: string) => Promise<void>;
   batchEquipItems: (items: { type: string; itemId: string }[]) => Promise<void>;
@@ -1224,13 +1237,7 @@ export const useAuthStore = create<AuthState>((set, get) => {
         console.error("Logout failed:", error);
       }
     },
-    createProfile: async (
-      role: Role, 
-      nickname: string, 
-      gender: 'male' | 'female' = 'male', 
-      customPhotoURL?: string,
-      extraData?: { birthdate?: string; country?: string }
-    ) => {
+    createProfile: async (role: Role, nickname: string, gender: 'male' | 'female' = 'male', customPhotoURL?: string) => {
       const { user } = get();
       if (!user) return;
 
@@ -1364,12 +1371,12 @@ export const useAuthStore = create<AuthState>((set, get) => {
         createdAt: Timestamp.now(),
         lastLoginAt: Timestamp.now(),
         hasESim: false,
-        gender: gender || 'male',
-        country: extraData?.country || 'iq',
-        birthdate: extraData?.birthdate || '1995-05-15',
-        docNumber: `ID-${(extraData?.country || 'iq').toUpperCase()}-${user.uid.slice(0, 4).toUpperCase()}-${Math.floor(1000 + Math.random() * 9000)}`,
-        documents: {
-          idCard: true,
+        gender: 'male',
+        roleSkills: {
+          skillPoints: 3,
+          skills: {},
+          contracts: [],
+          lastContractsRefresh: Date.now()
         }
       };
 
@@ -1721,6 +1728,18 @@ export const useAuthStore = create<AuthState>((set, get) => {
         });
       }
       
+      // Role Skill Combat Bonus
+      if (profile.roleSkills?.skills) {
+        const ironFistLvl = profile.roleSkills.skills['crim_iron_fist'] || 0;
+        if (ironFistLvl > 0) {
+          power += power * (ironFistLvl * 0.18);
+        }
+        const bossCommandLvl = profile.roleSkills.skills['boss_command'] || 0;
+        if (bossCommandLvl > 0) {
+          power += power * (bossCommandLvl * 0.12);
+        }
+      }
+
       return Math.floor(power);
     },
     calculateDefense: (profile: UserProfile) => {
@@ -1800,6 +1819,18 @@ export const useAuthStore = create<AuthState>((set, get) => {
         }
       }
       
+      // Role Skill Defense Bonus
+      if (profile.roleSkills?.skills) {
+        const crimDefenseLvl = profile.roleSkills.skills['crim_iron_fist'] || 0;
+        if (crimDefenseLvl > 0) {
+          defense += defense * (crimDefenseLvl * 0.12);
+        }
+        const bossAuthorityLvl = profile.roleSkills.skills['boss_authority'] || 0;
+        if (bossAuthorityLvl > 0) {
+          defense += defense * (bossAuthorityLvl * 0.10);
+        }
+      }
+
       return Math.floor(defense);
     },
     calculateGuardsPower: (profile: UserProfile) => {

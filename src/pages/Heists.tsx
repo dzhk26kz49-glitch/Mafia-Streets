@@ -380,6 +380,11 @@ export default function Heists() {
         const requiredPower = heist.type === 'small' ? 500 : 800;
         
         let successChance = Math.floor((totalPower / requiredPower) * 100);
+        // Thief Shadow Fingers perk (+15% success chance per level)
+        const thiefShadowLvl = profile?.roleSkills?.skills?.['thief_shadow_fingers'] || 0;
+        if (thiefShadowLvl > 0) {
+          successChance = Math.min(100, successChance + (thiefShadowLvl * 15));
+        }
         if (successChance > 100) successChance = 100;
 
         const roll = Math.random() * 100;
@@ -405,6 +410,12 @@ export default function Heists() {
               const userData = userDoc.data();
               // Apply VIP multiplier
               memberShare = Math.floor(memberShare * getVIPMultiplier(userData.vipLevel));
+
+              // Thief Double Loot perk (+25% chance per level)
+              const doubleLootLvl = userData?.roleSkills?.skills?.['thief_double_loot'] || 0;
+              if (doubleLootLvl > 0 && Math.random() < (doubleLootLvl * 0.25)) {
+                memberShare *= 2;
+              }
 
               transaction.update(userRef, {
                 dirtyMoney: (userData.dirtyMoney || 0) + memberShare,

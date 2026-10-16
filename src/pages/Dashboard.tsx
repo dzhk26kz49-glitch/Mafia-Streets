@@ -20,7 +20,9 @@ import {
   Siren,
   Vote,
   Home,
-  Share2
+  Share2,
+  Gavel,
+  Swords
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { collection, query, orderBy, limit, onSnapshot, where, getDocs, doc } from 'firebase/firestore';
@@ -32,6 +34,7 @@ import { clsx } from 'clsx';
 import PlayerModal from '../components/PlayerModal';
 import { formatNumber, formatMoney, safeFetch, safeToDate } from '../lib/utils';
 import { ConfigText } from '../components/ConfigText';
+import RoleActivePerksBar from '../components/RoleActivePerksBar';
 
 interface KillRecord {
   id: string;
@@ -200,9 +203,11 @@ export default function Dashboard() {
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 md:flex md:flex-wrap justify-center gap-4 w-full md:w-auto">
+            <div className="grid grid-cols-1 sm:grid-cols-4 md:flex md:flex-wrap justify-center gap-4 w-full md:w-auto">
               <ActionButton to="/crimes" icon={Sword} label={t('crimes.title')} color="red" />
+              <ActionButton to="/turf-wars" icon={Swords} label="حروب الأحياء" color="red" />
               <ActionButton to="/bank" icon={TrendingUp} label={t('bank.title')} color="green" />
+              <ActionButton to="/black-market" icon={Gavel} label="السوق السوداء" color="amber" />
               <ActionButton to="/airport" icon={Plane} label={t('airport.title')} color="blue" />
               {profile.builtProperties?.some(p => p.type === 'safe_house') && (
                 <button 
@@ -242,6 +247,9 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Role Strategy & Active Buffs Bar */}
+      <RoleActivePerksBar />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column: Stats & Targets */}
@@ -427,12 +435,13 @@ function SirenIcon({ size }: { size: number }) {
   );
 }
 
-function ActionButton({ to, icon: Icon, label, color }: { to: string, icon: any, label: string, color: 'red' | 'green' | 'blue' | 'orange' }) {
+function ActionButton({ to, icon: Icon, label, color }: { to: string, icon: any, label: string, color: 'red' | 'green' | 'blue' | 'orange' | 'amber' }) {
   const colors = {
     red: 'bg-red-600 hover:bg-red-500 shadow-red-600/20',
     green: 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-600/20',
     blue: 'bg-blue-600 hover:bg-blue-500 shadow-blue-600/20',
-    orange: 'bg-orange-600 hover:bg-orange-500 shadow-orange-600/20'
+    orange: 'bg-orange-600 hover:bg-orange-500 shadow-orange-600/20',
+    amber: 'bg-amber-600 hover:bg-amber-500 shadow-amber-600/20'
   };
 
   return (

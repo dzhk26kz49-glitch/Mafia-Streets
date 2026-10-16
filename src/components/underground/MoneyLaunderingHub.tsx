@@ -26,6 +26,7 @@ import {
 import { useAuthStore } from '../../store/useAuthStore';
 import { formatMoney } from '../../lib/utils';
 import { toast } from 'sonner';
+import { soundEngine } from '../../services/soundEngine';
 
 export interface FrontBusiness {
   id: string;
@@ -149,13 +150,21 @@ export const MoneyLaunderingHub: React.FC = () => {
   // Calculate current effective laundering fee for a front
   const getEffectiveCut = (front: FrontBusiness, level = 1): number => {
     // Each level beyond level 1 reduces cut by 1%
-    const cut = front.baseCut - (Math.max(1, level) - 1) * 1;
-    return Math.max(5, cut);
+    let cut = front.baseCut - (Math.max(1, level) - 1) * 1;
+    // Trader Tax Evasion perk (-15% fee per level)
+    const traderTaxLvl = profile?.roleSkills?.skills?.['trader_tax_evasion'] || 0;
+    if (traderTaxLvl > 0) {
+      cut = Math.floor(cut * (1 - (traderTaxLvl * 0.15)));
+    }
+    return Math.max(3, cut);
   };
+
+  const traderTaxLvl = profile?.roleSkills?.skills?.['trader_tax_evasion'] || 0;
+  const defaultCut = traderTaxLvl > 0 ? Math.floor(45 * (1 - (traderTaxLvl * 0.15))) : 45;
 
   const currentCutPercent = activeFrontConfig 
     ? getEffectiveCut(activeFrontConfig, activeFrontState?.level || 1)
-    : 45; // Default penalty cut if no front business owned
+    : defaultCut; // Default penalty cut if no front business owned
 
   // Amount calculation
   const numericAmount = Math.max(0, parseInt(launderAmount.replace(/,/g, ''), 10) || 0);
@@ -322,6 +331,7 @@ export const MoneyLaunderingHub: React.FC = () => {
         }
       });
 
+      soundEngine.playCashSound();
       setLaunderAmount('');
       toast.success(
         `تم تبييض ${formatMoney(numericAmount)} أموال قذرة! استلمت ${formatMoney(cleanReceived)} نقداً نظيفاً في رصيدك (الخصم: ${currentCutPercent}%).`

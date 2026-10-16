@@ -28,6 +28,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { doc, updateDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { PoliceEngine, ContrabandItemResult } from '../services/policeEngine';
+import { soundEngine } from '../services/soundEngine';
 
 export default function Police() {
   const navigate = useNavigate();
@@ -87,6 +88,7 @@ export default function Police() {
         toast.success('عاشت إيدك! مشت الرشوة والواسطة كمل الشغلة، قيدك انمسح من الحاسبة وهسه إنت نضيف وما عليك أي شبهة حبيبي!');
       } else {
         // فشل الرشوة: خصم المبلغ ورفض الواسطة وبقاء النجوم
+        soundEngine.playPoliceSirenSound();
         await updateDoc(doc(db, 'users', profile.uid), {
           cleanMoney: increment(-bribePrice)
         });

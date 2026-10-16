@@ -9,6 +9,7 @@ import { toast } from 'sonner';
 import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
 import { ar, enUS } from 'date-fns/locale';
+import { soundEngine } from '../services/soundEngine';
 
 const VISA_TIERS: { type: VisaType; price: number; color: string; bg: string; icon: any; benefits: string[] }[] = [
   { 
@@ -167,6 +168,7 @@ export default function Bank() {
         bankBalance: newBank
       });
       
+      soundEngine.playCashSound();
       toast.success(t('common.success'));
       setAmount('');
     } catch (error) {
@@ -228,6 +230,7 @@ export default function Bank() {
         dirtyVaultBalance: newDirtyVault
       });
       
+      soundEngine.playCashSound();
       toast.success(t('common.success'));
       setDirtyVaultAmount('');
     } catch (error) {

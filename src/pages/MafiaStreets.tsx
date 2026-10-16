@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { useSearchParams } from 'react-router-dom';
-import { Map as MapIcon, Users, Car, Info, FlaskConical, Sword, CheckCircle2, Wrench, Smartphone, Shield, Zap, X, EyeOff } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { Map as MapIcon, Users, Car, Info, FlaskConical, Sword, CheckCircle2, Wrench, Smartphone, Shield, Zap, X, EyeOff, Swords } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { doc, updateDoc, increment } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -27,6 +27,7 @@ interface Mission {
 
 const MafiaStreets = () => {
   const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
   const { profile, updateActiveMission, overrides } = useAuthStore();
   const [activeButton, setActiveButton] = useState<number | null>(() => {
     return searchParams.get('tab') === 'underground' ? 4 : null;
@@ -174,6 +175,12 @@ const MafiaStreets = () => {
       title: 'عالم الخفاء (NPCs)',
       image: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=400',
       icon: EyeOff,
+    },
+    {
+      id: 5,
+      title: 'حروب الأحياء',
+      image: 'https://images.unsplash.com/photo-1541971875076-8f970d573be6?auto=format&fit=crop&q=80&w=400',
+      icon: Swords,
     },
   ];
 
@@ -440,6 +447,10 @@ const MafiaStreets = () => {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => {
+                      if (btn.id === 5) {
+                        navigate('/turf-wars');
+                        return;
+                      }
                       setActiveButton(btn.id);
                       if (btn.id === 1 && profile) {
                         const text = generateRandomWelcomeMessage(profile.level);

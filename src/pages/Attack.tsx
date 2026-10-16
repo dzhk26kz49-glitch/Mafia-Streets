@@ -9,6 +9,7 @@ import { Sword, Shield, Skull, Target, Zap } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, formatNumberExact, formatMoney } from '../lib/utils';
 import { getVIPMultiplier } from '../lib/vip';
+import { getActiveRolePerks } from '../lib/rolePerks';
 import PlayerAvatar from '../components/PlayerAvatar';
 import { CinematicAttack } from '../components/CinematicAttack';
 
@@ -202,8 +203,17 @@ export default function Attack() {
         }
 
         // Combat calculation inside transaction for accuracy
+        const myPerks = getActiveRolePerks(userData as any);
+        const targetPerks = getActiveRolePerks(targetData as any);
+
         const myPower = calculatePower(userData as any);
-        const targetDefense = targetData.defense || calculateDefense(targetData as any);
+        let rawTargetDefense = targetData.defense || calculateDefense(targetData as any);
+        
+        // Criminal Intimidation perk: debuffs target defense (-15% per level)
+        if (myPerks.crimIntimidationDebuffPercent > 0) {
+          rawTargetDefense = Math.max(1, Math.floor(rawTargetDefense * (1 - (myPerks.crimIntimidationDebuffPercent / 100))));
+        }
+        const targetDefense = rawTargetDefense;
         const targetPower = targetData.power || calculatePower(targetData as any);
         
         const powerRatio = myPower / (targetDefense || 1);
@@ -229,7 +239,19 @@ export default function Attack() {
           const targetClean = targetData.cleanMoney || 0;
           const totalAvailable = targetDirty + targetClean;
           
-          const stolenTotal = Math.min(totalAvailable, Math.floor(Math.random() * (4000 - 1000 + 1)) + 1000);
+          let baseStolen = Math.min(totalAvailable, Math.floor(Math.random() * (4000 - 1000 + 1)) + 1000);
+
+          // Target Trader Fortified Vaults: protects cash from theft (+25% protection per level)
+          if (targetPerks.traderVaultProtectionPercent > 0) {
+            baseStolen = Math.floor(baseStolen * (1 - (targetPerks.traderVaultProtectionPercent / 100)));
+          }
+
+          // Attacker Boss Spoils of Victory: increases stolen loot (+25% per level)
+          if (myPerks.bossSpoilsBonusPercent > 0) {
+            baseStolen = Math.floor(baseStolen * (1 + (myPerks.bossSpoilsBonusPercent / 100)));
+          }
+
+          const stolenTotal = Math.min(totalAvailable, baseStolen);
           
           // Distribute stolenTotal between dirty and clean money
           const dirtyRatio = totalAvailable > 0 ? targetDirty / totalAvailable : 0;
@@ -267,10 +289,15 @@ export default function Attack() {
           stolenDirty = Math.floor(stolenDirty * getVIPMultiplier(userData.vipLevel));
           stolenClean = Math.floor(stolenClean * getVIPMultiplier(userData.vipLevel));
 
+          let repGain = 200;
+          if (myPerks.bossReputationBonusPercent > 0) {
+            repGain = Math.floor(repGain * (1 + (myPerks.bossReputationBonusPercent / 100)));
+          }
+
           transaction.update(userRef, {
             dirtyMoney: (userData.dirtyMoney || 0) + stolenDirty,
             cleanMoney: (userData.cleanMoney || 0) + stolenClean + totalBounty,
-            reputation: (userData.reputation || 0) + 200,
+            reputation: (userData.reputation || 0) + repGain,
             wantedStars: Math.min(5, (userData.wantedStars || 0) + 1),
             bounty: (userData.bounty || 0) + 5000
           });

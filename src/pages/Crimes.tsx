@@ -6,6 +6,7 @@ import { ShieldAlert, Car, Bike, Home, Landmark, Timer, Lock, Shield } from 'luc
 import { useTranslation } from 'react-i18next';
 import { formatNumber, formatMoney, safeToMillis } from '../lib/utils';
 import { getVIPMultiplier, getVIPCooldownReduction } from '../lib/vip';
+import { getActiveRolePerks } from '../lib/rolePerks';
 import { toast } from 'sonner';
 
 // Mock cooldowns (in a real app, store in Firestore)
@@ -50,16 +51,29 @@ export default function Crimes() {
       return;
     }
 
+    const perks = getActiveRolePerks(profile);
+
     // Apply Martial Law penalty
     let finalSuccessChance = successChance;
     if (govData?.martialLaw) {
       finalSuccessChance = successChance * 0.8; // 20% harder
     }
+    // Thief Shadow Fingers Perk (+15% per level)
+    if (perks.thiefCrimeSuccessBonusPercent > 0) {
+      finalSuccessChance = Math.min(0.95, finalSuccessChance * (1 + (perks.thiefCrimeSuccessBonusPercent / 100)));
+    }
 
     const success = Math.random() < finalSuccessChance;
     const baseRewardCalc = Math.floor(baseReward * (0.8 + Math.random() * 0.4));
     const levelMultiplier = 1 + ((profile.level || 1) * 0.05);
-    const reward = Math.floor(baseRewardCalc * getVIPMultiplier(profile.vipLevel as any) * levelMultiplier);
+    let reward = Math.floor(baseRewardCalc * getVIPMultiplier(profile.vipLevel as any) * levelMultiplier);
+
+    // Thief Double Loot Perk (+25% chance per level)
+    let isDoubleLoot = false;
+    if (perks.thiefDoubleLootPercent > 0 && Math.random() < (perks.thiefDoubleLootPercent / 100)) {
+      reward *= 2;
+      isDoubleLoot = true;
+    }
 
     try {
       if (success) {
@@ -79,7 +93,8 @@ export default function Crimes() {
           reputation: increment(level * 100),
           inventory: newInventory
         });
-        toast.success(t('crimes.successMsg', { reward }));
+        const bonusMsg = isDoubleLoot ? ' 💰 (غنيمة مضاعفة: أصابع الظل x2!)' : '';
+        toast.success(t('crimes.successMsg', { reward }) + bonusMsg);
       } else {
         // Calculate jail time based on wanted stars
         let jailMinutes = 5; // Base jail time
@@ -92,6 +107,17 @@ export default function Crimes() {
         if (profile.policeRank === 'Silver') jailMinutes *= 0.75;
         if (profile.policeRank === 'Bronze') jailMinutes *= 0.5;
         if (profile.policeRank === 'Diamond') jailMinutes = 0;
+
+        // Criminal Prison Resilience perk (-25% per level)
+        if (perks.crimPrisonReductionPercent > 0) {
+          jailMinutes *= Math.max(0.2, 1 - (perks.crimPrisonReductionPercent / 100));
+        }
+
+        // Thief Alarm Bypass: chance to evade arrest completely
+        const evadesArrest = perks.thiefAlarmBypassPercent > 0 && Math.random() < (perks.thiefAlarmBypassPercent / 100);
+        if (evadesArrest) {
+          jailMinutes = 0;
+        }
 
         // Calculate dirty money loss with Visa protection
         let hidePercentage = 0;
@@ -129,7 +155,11 @@ export default function Crimes() {
           }
         } else {
           await updateDoc(doc(db, 'users', profile.uid), updates);
-          toast.success(t('crimes.immunityMsg'));
+          if (evadesArrest) {
+            toast.success('تمكنت من تعطيل أجهزة الإنذار والفرار السريع في اللحظة الأخيرة! 🥷');
+          } else {
+            toast.success(t('crimes.immunityMsg'));
+          }
         }
       }
     } catch (error) {
@@ -146,7 +176,11 @@ export default function Crimes() {
       };
       
       const minutes = cooldownMinutes[type] || 5;
-      const finalMinutes = minutes * getVIPCooldownReduction(profile.vipLevel as any);
+      let finalMinutes = minutes * getVIPCooldownReduction(profile.vipLevel as any);
+      // Thief Quick Escape perk (-30% cooldown per level)
+      if (perks.thiefCooldownReductionPercent > 0) {
+        finalMinutes *= Math.max(0.2, 1 - (perks.thiefCooldownReductionPercent / 100));
+      }
       COOLDOWNS[type] = Date.now() + finalMinutes * 60 * 1000;
       setNow(Date.now()); // force re-render
     }

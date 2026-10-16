@@ -94,6 +94,12 @@ export class PoliceEngine {
       score += Math.min((profile.crimes.theft + profile.crimes.kills) * 2, 20);
     }
 
+    // Role skill perks: Boss Immunity, Thief Alarm Bypass, Smuggler Customs Evasion
+    const bossImmunity = (profile.roleSkills?.skills?.['boss_immunity'] || 0) * 8;
+    const thiefBypass = (profile.roleSkills?.skills?.['thief_alarm_bypass'] || 0) * 6;
+    const smugglerCustoms = (profile.roleSkills?.skills?.['smuggler_customs_evasion'] || 0) * 6;
+    score = Math.max(0, score - (bossImmunity + thiefBypass + smugglerCustoms));
+
     return Math.min(Math.max(score, 5), 100);
   }
 

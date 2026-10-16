@@ -5,7 +5,7 @@ import {
   Menu, X, Home, User, Map as MapIcon, Building2, 
   ShoppingCart, ShoppingBag, ShieldAlert, Briefcase, LogOut,
   Landmark, Dices, Users, Cross, ShieldCheck, Globe,
-  Package, Siren, Heart, Lock, VenetianMask, Crown, ChevronDown, ChevronUp, Plane, Smartphone, Star, Gift, Dumbbell, Music, MessageCircle, BookOpen, FlaskConical, Shield, EyeOff
+  Package, Siren, Heart, Lock, VenetianMask, Crown, ChevronDown, ChevronUp, Plane, Smartphone, Star, Gift, Dumbbell, Music, MessageCircle, BookOpen, FlaskConical, Shield, EyeOff, Sparkles, Gavel, Swords
 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { collection, query, where, onSnapshot, doc, updateDoc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -21,6 +21,10 @@ import DeathOverlay from './DeathOverlay';
 import { PoliceRaidModal } from './underground/PoliceRaidModal';
 import { PoliceEngine } from '../services/policeEngine';
 import { PoliceRaidEvent } from '../types/npcTypes';
+import { AudioAtmosphereControl } from './AudioAtmosphereControl';
+import { soundEngine } from '../services/soundEngine';
+import { GlobalLiveEventBanner } from './GlobalLiveEventBanner';
+import { useRef } from 'react';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { t, i18n } = useTranslation();
@@ -95,6 +99,15 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const isDead = (profile?.health || 0) <= 0;
   const [activeGlobalRaid, setActiveGlobalRaid] = useState<PoliceRaidEvent | null>(null);
 
+  const prevStarsRef = useRef(profile?.wantedStars || 0);
+  useEffect(() => {
+    const currentStars = profile?.wantedStars || 0;
+    if (currentStars > prevStarsRef.current && prevStarsRef.current !== 0) {
+      soundEngine.playPoliceSirenSound();
+    }
+    prevStarsRef.current = currentStars;
+  }, [profile?.wantedStars]);
+
   // نظام المداهمات الأمنية التكتيكية التلقائية للاعب في اللعبة
   useEffect(() => {
     if (!profile || !user) return;
@@ -105,6 +118,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     // استماع للأحداث البرمجية التي تطلق مداهمة فورية
     const handleManualRaid = () => {
       if (!activeGlobalRaid) {
+        soundEngine.playPoliceSirenSound();
         const raid = PoliceEngine.generateRaidEvent(profile);
         setActiveGlobalRaid(raid);
       }
@@ -132,6 +146,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
       if (raidChance > 0 && Math.random() < raidChance) {
         sessionStorage.setItem('last_auto_police_raid', now.toString());
+        soundEngine.playPoliceSirenSound();
         const raid = PoliceEngine.generateRaidEvent(profile);
         setActiveGlobalRaid(raid);
       }
@@ -150,6 +165,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       icon: User,
       items: [
         { name: profile?.displayName || t('nav.character') || 'الشخصية', path: '/character', icon: User, isGold: true },
+        { name: 'مهارات وعقود الدور', path: '/role-skills', icon: Sparkles, isGold: true },
         { name: t('nav.profile') || 'الملف الشخصي', path: '/profile', icon: User },
         { name: t('nav.family') || 'العائلة', path: '/family', icon: Heart },
         { name: 'الحمايات والحراسة', path: '/protection', icon: ShieldCheck },
@@ -179,6 +195,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         { name: 'المختبرات', path: '/labs', icon: FlaskConical },
         { name: 'المليشيات', path: '/militias', icon: Shield, isSpecial: true },
         { name: 'عالم الخفاء (NPCs)', path: '/underground', icon: EyeOff, isSpecial: true },
+        { name: 'السوق السوداء والمزادات', path: '/black-market', icon: Gavel, isGold: true },
+        { name: 'حروب النفوذ والأحياء', path: '/turf-wars', icon: Swords, isGold: true },
       ]
     },
     {
@@ -369,9 +387,12 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
+            {/* زر المؤثرات الصوتية والموسيقى السينمائية في الزاوية */}
+            <AudioAtmosphereControl />
+
             <div className="flex flex-col items-center gap-1">
-              <div className="flex items-center gap-1 bg-white/5 px-3 py-1.5 rounded-full border border-white/10">
+              <div className="flex items-center gap-1 bg-white/5 px-2.5 sm:px-3 py-1.5 rounded-full border border-white/10">
                 {[...Array(5)].map((_, i) => (
                   <Star 
                     key={i} 
@@ -442,6 +463,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
         {/* Page Content */}
         <div className="flex-1 overflow-y-auto p-4 lg:p-8 pt-28 lg:pt-32 bg-transparent relative">
+          <GlobalLiveEventBanner />
           {isDead && location.pathname !== '/hospital' ? (
             <DeathOverlay killedBy={profile?.killedBy || null} />
           ) : (

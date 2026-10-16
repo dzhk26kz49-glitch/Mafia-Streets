@@ -21,6 +21,7 @@ import {
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { formatMoney, formatNumber, safeToMillis } from '../lib/utils';
 import { getVIPDiscount } from '../lib/vip';
+import { getActiveRolePerks } from '../lib/rolePerks';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function Prison() {
@@ -47,8 +48,19 @@ export default function Prison() {
       const hours = Math.max(1, Math.ceil(remainingMillis / (3600 * 1000)));
       setRemainingHours(hours);
       const baseBribe = hours * 250000;
-      const discountedBribe = Math.floor(baseBribe * getVIPDiscount(profile.vipLevel as any));
-      setCurrentBribeCost(Math.max(250000, discountedBribe));
+      const perks = getActiveRolePerks(profile);
+      let discountedBribe = Math.floor(baseBribe * getVIPDiscount(profile.vipLevel as any));
+
+      // Boss Immunity (-20% bail per level)
+      if (perks.bossImmunityBailPercent > 0) {
+        discountedBribe = Math.floor(discountedBribe * (1 - (perks.bossImmunityBailPercent / 100)));
+      }
+      // Criminal Prison Resilience (-25% bail per level)
+      if (perks.crimPrisonReductionPercent > 0) {
+        discountedBribe = Math.floor(discountedBribe * (1 - (perks.crimPrisonReductionPercent / 100)));
+      }
+
+      setCurrentBribeCost(Math.max(50000, discountedBribe));
     };
 
     updateBribe();
