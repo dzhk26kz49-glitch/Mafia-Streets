@@ -319,14 +319,30 @@ export default function TurfWars() {
               <div className="p-6 pt-0 space-y-2">
                 {isController ? (
                   <div className="space-y-2">
-                    <button
-                      disabled={collectingDistrictId === district.id}
-                      onClick={() => handleCollectTax(district)}
-                      className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black font-black text-xs transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                    >
-                      <Coins size={16} />
-                      <span>{collectingDistrictId === district.id ? 'جاري التحصيل...' : `تحصيل إتاوات الحي المتراكمة (${formatMoney(liveTax)}) 💵`}</span>
-                    </button>
+                    {(() => {
+                      const isNotReady = liveTax < 5000;
+                      return (
+                        <button
+                          disabled={collectingDistrictId === district.id || isNotReady}
+                          onClick={() => handleCollectTax(district)}
+                          className={clsx(
+                            "w-full py-3.5 rounded-2xl font-black text-xs transition-all shadow-lg flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+                            isNotReady || collectingDistrictId === district.id
+                              ? "bg-zinc-800 text-zinc-500 border border-zinc-700/50"
+                              : "bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-black shadow-emerald-500/20"
+                          )}
+                        >
+                          <Coins size={16} />
+                          <span>
+                            {collectingDistrictId === district.id 
+                              ? 'جاري التحصيل...' 
+                              : isNotReady 
+                              ? `تحصيل الإتاوات (${formatMoney(liveTax)} - قليل جداً)` 
+                              : `تحصيل إتاوات الحي المتراكمة (${formatMoney(liveTax)}) 💵`}
+                          </span>
+                        </button>
+                      );
+                    })()}
 
                     <button
                       disabled={isProcessingAction || district.fortificationLevel >= 5}

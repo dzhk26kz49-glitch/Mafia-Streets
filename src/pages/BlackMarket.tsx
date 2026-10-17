@@ -37,7 +37,8 @@ import {
   Send, 
   Crown,
   Eye,
-  Plus
+  Plus,
+  Package
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
@@ -81,7 +82,7 @@ export default function BlackMarket() {
   const { profile } = useAuthStore();
   const perks = getActiveRolePerks(profile);
 
-  const [activeTab, setActiveTab] = useState<'auctions' | 'commodities' | 'flash'>('auctions');
+  const [activeTab, setActiveTab] = useState<'auctions' | 'commodities' | 'flash' | 'secret_storage'>('auctions');
   const [selectedRarity, setSelectedRarity] = useState<string>('all');
   const [commodities, setCommodities] = useState<CommodityItem[]>(() => BlackMarketService.getDynamicCommodityPrices());
   const [auctions, setAuctions] = useState<LiveAuctionItem[]>(INITIAL_AUCTIONS);
@@ -170,6 +171,47 @@ export default function BlackMarket() {
     const ok = await BlackMarketService.buyFlashDeal(deal, profile);
     if (ok) {
       soundEngine.playBlackMarketDealSound();
+    }
+  };
+
+  // Handle Using Secret Storage Items
+  const handleUseItem = async (itemId: string, category: string) => {
+    if (!profile) return;
+    try {
+      const userRef = doc(db, 'users', profile.uid);
+      const updates: any = {};
+
+      if (category === 'tools' || category === 'weapons') {
+        const currentCount = (profile.inventory as any)?.[category]?.[itemId] || 0;
+        if (currentCount <= 1) {
+          updates[`inventory.${category}.${itemId}`] = 0;
+        } else {
+          updates[`inventory.${category}.${itemId}`] = increment(-1);
+        }
+      }
+
+      if (itemId === 'auc_radar_jammer' || itemId.includes('jammer')) {
+        updates.cleanMoney = increment(250000);
+        updates.reputation = increment(150);
+        toast.success('تم تشغيل جهاز التشويش العسكري بنجاح! جنيت 250,000 كاش نظيف و +150 هيبة 📡');
+      } else if (itemId === 'ap_ammo_crate' || itemId.includes('ammo')) {
+        updates.cleanMoney = increment(150000);
+        updates.reputation = increment(100);
+        toast.success('تم توزيع الذخائر الخارقة! جنيت 150,000 كاش و +100 هيبة ⚔️');
+      } else if (itemId === 'bank_master_exploit' || itemId.includes('exploit')) {
+        updates.cleanMoney = increment(500000);
+        updates.reputation = increment(200);
+        toast.success('تم تفعيل ثغرة البنك المركزي وسحب أرباح 500,000 كاش نظيف! 💻');
+      } else {
+        updates.cleanMoney = increment(100000);
+        updates.reputation = increment(50);
+        toast.success('تم استخدام العنصر بنجاح وجني أرباح 100,000 كاش! 💼');
+      }
+
+      await updateDoc(userRef, updates);
+      soundEngine.playBlackMarketDealSound();
+    } catch (e) {
+      toast.error('فشل في استخدام العنصر');
     }
   };
 
@@ -275,6 +317,19 @@ export default function BlackMarket() {
         >
           <Zap size={18} />
           <span>الصفقات الخاطفة المحسومة ({flashDeals.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('secret_storage')}
+          className={clsx(
+            "flex items-center gap-2 px-6 py-3 rounded-2xl font-black text-sm transition-all shrink-0 cursor-pointer",
+            activeTab === 'secret_storage'
+              ? "bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-lg shadow-purple-600/20"
+              : "bg-zinc-900/60 text-zinc-400 hover:text-white hover:bg-zinc-800/60 border border-white/5"
+          )}
+        >
+          <Package size={18} />
+          <span>المخزن السري وغنائم المزادات</span>
         </button>
       </div>
 
@@ -705,6 +760,56 @@ export default function BlackMarket() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: SECRET STORAGE & USABLE ITEMS */}
+      {activeTab === 'secret_storage' && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-purple-950/40 via-zinc-950 to-black border border-purple-500/30 flex items-center justify-between">
+            <div className="space-y-1">
+              <h2 className="text-xl font-black text-white flex items-center gap-2">
+                <Package className="text-purple-400" size={22} />
+                <span>المخزن السري للمزادات والصفقات الخاطفة</span>
+              </h2>
+              <p className="text-xs text-zinc-400">
+                جميع المعدات، الأدوات العسكرية، والشحنات المكتسبة من المزادات السرية والصفقات الخاطفة قابلة للاستخدام الفوري لتعزيز قوتك وجنيك للأموال.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {profile?.inventory?.tools && Object.entries(profile.inventory.tools).map(([id, count]) => {
+              if ((count as number) <= 0) return null;
+              return (
+                <div key={id} className="bg-zinc-900/60 p-6 rounded-3xl border border-purple-500/30 flex flex-col justify-between gap-4 shadow-xl">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="px-3 py-1 bg-purple-500/20 text-purple-400 border border-purple-500/30 rounded-full text-[10px] font-black">
+                        أداة تكتيكية سريّة
+                      </span>
+                      <span className="font-mono text-xs text-zinc-400 font-bold">الكمية: {count as number}</span>
+                    </div>
+                    <h3 className="text-base font-black text-white">{id}</h3>
+                    <p className="text-xs text-zinc-400">أداة محترفة تم اقتناؤها من مزادات الظل أو الصفقات الخاطفة.</p>
+                  </div>
+                  <button
+                    onClick={() => handleUseItem(id, 'tools')}
+                    className="w-full py-3 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-500 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-purple-600/25 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Zap size={15} />
+                    <span>استخدام الأداة / تفعيل الأثر ⚡</span>
+                  </button>
+                </div>
+              );
+            })}
+
+            {(!profile?.inventory?.tools || Object.values(profile.inventory.tools).every(v => (v as number) <= 0)) && (
+              <div className="col-span-full py-16 text-center text-zinc-500 text-xs font-bold">
+                المخزن السري فارغ حالياً. شارك في المزادات السرية الحية أو الصفقات الخاطفة لامتلاك معدات فريدة! 🏛️
+              </div>
+            )}
           </div>
         </div>
       )}
