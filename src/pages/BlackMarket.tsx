@@ -45,6 +45,7 @@ import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import clsx from 'clsx';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { soundEngine } from '../services/soundEngine';
 
 const RARITY_THEMES: Record<AuctionRarity, { border: string; bg: string; text: string; badge: string; shadow: string }> = {
@@ -81,6 +82,7 @@ const RARITY_THEMES: Record<AuctionRarity, { border: string; bg: string; text: s
 export default function BlackMarket() {
   const { profile } = useAuthStore();
   const perks = getActiveRolePerks(profile);
+  const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'auctions' | 'commodities' | 'flash' | 'secret_storage'>('auctions');
   const [selectedRarity, setSelectedRarity] = useState<string>('all');
@@ -679,12 +681,12 @@ export default function BlackMarket() {
 
                   <button
                     onClick={() => {
-                      toast.info(`يمكنك تداول ${item.name} وشحنها مباشرة عبر قسم التهريب والجمارك.`);
+                      navigate('/trade');
                     }}
-                    className="w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 text-white font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="w-full py-3 rounded-xl bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/30 text-indigo-300 font-bold text-xs transition-all flex items-center justify-center gap-2 cursor-pointer shadow-md"
                   >
-                    <ArrowRightLeft size={14} className="text-blue-400" />
-                    <span>تداول فوري في قسم التهريب 📦</span>
+                    <ArrowRightLeft size={14} className="text-indigo-400" />
+                    <span>تداول فوري في قسم التهريب الدولي 🚢</span>
                   </button>
                 </div>
               </div>

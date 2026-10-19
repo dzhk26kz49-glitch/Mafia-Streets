@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useAuthStore, Guard, ProtectionCar } from '../store/useAuthStore';
 import { Shield, Car, UserPlus, Zap, Heart, Wrench, LayoutGrid, List, Crosshair, Smartphone, Pill, Syringe, Sword, Trash2, Users } from 'lucide-react';
-import { doc, updateDoc, onSnapshot, collection } from 'firebase/firestore';
+import { doc, updateDoc, onSnapshot, collection, setDoc } from 'firebase/firestore';
 import { db } from '../lib/firebase';
 import { toast } from 'sonner';
 import { MARKET_ITEMS } from '../lib/items';
@@ -10,8 +10,8 @@ import clsx from 'clsx';
 
 const GUARD_NAMES = ['أحمد', 'محمد', 'علي', 'عمر', 'خالد', 'طارق', 'زياد', 'فهد', 'سعد', 'يوسف', 'حسن', 'حسين', 'محمود', 'مصطفى', 'عبدالله'];
 const GUARD_COUNTRIES = ['iq', 'sy', 'lb', 'eg', 'ae', 'sa', 'jo', 'ma', 'dz', 'tn'];
-// CRITICAL: DO NOT CHANGE THIS IMAGE URL. IT IS PERMANENT AS REQUESTED BY THE USER.
-const PERMANENT_GUARD_IMAGE = 'https://chatgpt.com/backend-api/estuary/public_content/enc/eyJpZCI6Im1fNjlkMDExYzI4Y2U4ODE5MTg0MmIwYWVkNGE5YzhiMjk6ZmlsZV8wMDAwMDAwMGU4MWM3MjQ2ODgwMWVmODY2NmI1ZDMzNCIsInRzIjoiMjA1NTMiLCJwIjoicHlpIiwiY2lkIjoiMSIsInNpZyI6IjViNzUyMjUzYzllYWJhOGY3MDdkNjZhZjRjMDI4ODFmNDAzNzdlOGM4OTFiYzVhZjE3NGY2MDg0NjU5NTZlZmQiLCJ2IjoiMCIsImdpem1vX2lkIjpudWxsLCJjcyI6bnVsbCwiY2RuIjpudWxsLCJjcyI6bnVsbCwibWEiOm51bGx9';
+// Permanent bodyguard image updated per user request
+const PERMANENT_GUARD_IMAGE = 'https://up6.cc/2026/10/179235010243571.png';
 const GUARD_IMAGES = [PERMANENT_GUARD_IMAGE];
 
 export default function Protection() {
@@ -25,6 +25,21 @@ export default function Protection() {
   const [marketOverrides, setMarketOverrides] = useState<Record<string, any>>({});
 
   React.useEffect(() => {
+    // Persist bodyguard image in database permanently
+    setDoc(doc(db, 'market_overrides', 'guard_bodyguard'), {
+      id: 'guard_bodyguard',
+      name: 'الحارس الشخصي',
+      image: PERMANENT_GUARD_IMAGE,
+      updatedAt: Date.now()
+    }, { merge: true }).catch(console.error);
+
+    setDoc(doc(db, 'market_overrides', 'bodyguard'), {
+      id: 'bodyguard',
+      name: 'الحارس الشخصي',
+      image: PERMANENT_GUARD_IMAGE,
+      updatedAt: Date.now()
+    }, { merge: true }).catch(console.error);
+
     const unsub = onSnapshot(collection(db, 'market_overrides'), (snapshot) => {
       const overrides: Record<string, any> = {};
       snapshot.forEach(doc => {

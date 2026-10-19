@@ -155,31 +155,31 @@ const MafiaStreets = () => {
     {
       id: 1,
       title: 'الشوارع',
-      image: 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&q=80&w=400',
+      image: overrides?.['bg_mafia_streets']?.image || overrides?.['btn_streets']?.image || 'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?auto=format&fit=crop&q=80&w=400',
       icon: MapIcon,
     },
     {
       id: 2,
       title: 'المافيات',
-      image: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&q=80&w=400',
+      image: overrides?.['bg_mafia_gangs']?.image || overrides?.['btn_mafias']?.image || 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&q=80&w=400',
       icon: Users,
     },
     {
       id: 3,
       title: 'الاغنياء',
-      image: 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=400',
+      image: overrides?.['bg_mafia_rich']?.image || overrides?.['btn_wealthy']?.image || 'https://images.unsplash.com/photo-1503376780353-7e6692767b70?auto=format&fit=crop&q=80&w=400',
       icon: Car,
     },
     {
       id: 4,
       title: 'عالم الخفاء (NPCs)',
-      image: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=400',
+      image: overrides?.['bg_underground']?.image || overrides?.['btn_underground']?.image || 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=400',
       icon: EyeOff,
     },
     {
       id: 5,
       title: 'حروب الأحياء',
-      image: 'https://images.unsplash.com/photo-1541971875076-8f970d573be6?auto=format&fit=crop&q=80&w=400',
+      image: overrides?.['bg_turf_wars']?.image || overrides?.['btn_turfs']?.image || 'https://images.unsplash.com/photo-1541971875076-8f970d573be6?auto=format&fit=crop&q=80&w=400',
       icon: Swords,
     },
   ];
@@ -311,8 +311,11 @@ const MafiaStreets = () => {
       <div className="absolute inset-0 z-0">
         <img
           src={
+            activeButton === 3 ? (overrides?.['bg_mafia_rich']?.image || "/images/wealthy/wealthy_bg.png") :
             activeButton === 2 ? (overrides?.['bg_mafia_gangs']?.image || "/images/mafia/mafia_branch_bg.png") :
             activeButton === 1 ? (overrides?.['bg_mafia_streets']?.image || "/images/mafia/mafia_streets_bg.png") :
+            activeButton === 4 ? (overrides?.['bg_underground']?.image || "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80") :
+            activeButton === 5 ? (overrides?.['bg_turf_wars']?.image || "https://images.unsplash.com/photo-1541971875076-8f970d573be6?auto=format&fit=crop&q=80") :
             (overrides?.['bg_mafia']?.image || "/images/mafia/mafia_streets_bg.png")
           }
           className={clsx(

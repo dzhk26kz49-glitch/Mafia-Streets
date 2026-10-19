@@ -6,9 +6,11 @@ import { useAuthStore } from '../store/useAuthStore';
 import { doc, onSnapshot, collection, query, getDocs, runTransaction, getDoc, serverTimestamp, updateDoc, increment, limit, orderBy, setDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { toast } from 'sonner';
-import { Users, Shield, Swords, Target, UserPlus, Crosshair, UserMinus, Plus, Trash2, Wallet, Package, Check, X, List, Edit3, Bird, Sword, Crown, Skull, Flame, Zap, Anchor, Ghost, TrendingUp, History, Settings, Activity, Clock, ArrowDown, User, AlertTriangle, Trophy, Car, DollarSign, Gift, RefreshCw, Monitor, Smartphone } from 'lucide-react';
+import { Users, Shield, Swords, Target, UserPlus, Crosshair, UserMinus, Plus, Trash2, Wallet, Package, Check, X, List, Edit3, Bird, Sword, Crown, Skull, Flame, Zap, Anchor, Ghost, TrendingUp, History, Settings, Activity, Clock, ArrowDown, User, AlertTriangle, Trophy, Car, DollarSign, Gift, RefreshCw, Monitor, Smartphone, Landmark, MapPin, Building2, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { MARKET_ITEMS } from '../lib/items';
+import { CityBuilding } from '../types/npcTypes';
+import { INITIAL_CITY_BUILDINGS } from '../services/cityBuildingsData';
 
 interface Gang {
   id: string;
@@ -138,11 +140,24 @@ export default function Gangs() {
   const [newGangName, setNewGangName] = useState('');
   const [newGangSymbol, setNewGangSymbol] = useState(GANG_SYMBOLS[0]);
   const [newGangColor, setNewGangColor] = useState(GANG_COLORS[0]);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'inventory' | 'requests' | 'list' | 'management' | 'wars' | 'activity'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'members' | 'inventory' | 'requests' | 'list' | 'management' | 'wars' | 'activity' | 'turf'>('dashboard');
   const [memberNames, setMemberNames] = useState<Record<string, string>>({});
   const [isEditingGangName, setIsEditingGangName] = useState(false);
   const [tempGangName, setTempGangName] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [cityBuildings, setCityBuildings] = useState<CityBuilding[]>(INITIAL_CITY_BUILDINGS);
+  const [collectingTurf, setCollectingTurf] = useState(false);
+
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'city_maps', 'baghdad'), (snap) => {
+      if (snap.exists() && snap.data()?.buildings) {
+        setCityBuildings(snap.data().buildings as CityBuilding[]);
+      } else {
+        setCityBuildings(INITIAL_CITY_BUILDINGS);
+      }
+    });
+    return () => unsub();
+  }, []);
 
   useEffect(() => {
     if (gang && gang.members) {
@@ -1342,6 +1357,7 @@ export default function Gangs() {
             {[
               { id: 'dashboard', icon: Target, label: t('common.dashboard') },
               { id: 'members', icon: Users, label: t('gangs.membersList') },
+              { id: 'turf', icon: Landmark, label: 'المقاطعات والنفوذ' },
               { id: 'inventory', icon: Package, label: t('gangs.gangInventory') },
               { id: 'requests', icon: UserPlus, label: t('gangs.pendingRequests'), count: gang.pendingRequests.length, leaderOnly: true },
               { id: 'management', icon: Settings, label: t('gangs.management'), leaderOnly: true },
@@ -2213,6 +2229,160 @@ export default function Gangs() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'turf' && gang && (
+          <div className="space-y-8">
+            {/* Turf Header & Global Metrics */}
+            <div className="p-8 bg-gradient-to-r from-purple-950/60 via-zinc-900 to-black rounded-3xl border border-purple-500/30 shadow-2xl relative overflow-hidden">
+              <div className="relative z-10 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-bold text-purple-400 mb-2">
+                    <Crown size={16} />
+                    <span>الهيمنة والسيطرة الإقليمية</span>
+                  </div>
+                  <h2 className="text-3xl font-black text-white uppercase tracking-tight flex items-center gap-3">
+                    <Landmark className="text-purple-400" size={32} />
+                    المقاطعات والنفوذ بالمدينة
+                  </h2>
+                  <p className="text-xs text-zinc-400 max-w-xl mt-1">
+                    عقارات الخريطة التي يمتلكها أو يستأجرها أفراد العصابة ترفع نفوذ رايتكم في مقاطعات بغداد وتدر أرباحاً دورية لخزينة العصابة.
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Link
+                    to="/map"
+                    className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow"
+                  >
+                    <MapPin size={16} className="text-red-400" />
+                    استعراض الخريطة
+                    <ExternalLink size={12} className="text-zinc-500" />
+                  </Link>
+
+                  <Link
+                    to="/properties"
+                    className="px-4 py-2.5 bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow"
+                  >
+                    <Building2 size={16} className="text-purple-300" />
+                    إدارة العقارات
+                  </Link>
+                </div>
+              </div>
+
+              {/* Metrics */}
+              {(() => {
+                const gangBlds = cityBuildings.filter(b => 
+                  b.gangId === gang.id || 
+                  (b.ownerId && gang.members && gang.members.includes(b.ownerId)) ||
+                  (b.tenantId && gang.members && gang.members.includes(b.tenantId))
+                );
+                const dailyRev = gangBlds.reduce((acc, b) => acc + (b.dailyRevenue || 0), 0);
+                const totalAccumulated = gangBlds.reduce((acc, b) => acc + (b.accumulatedRent || 0), 0);
+
+                const handleCollectTurf = async () => {
+                  if (collectingTurf || totalAccumulated <= 0) return;
+                  setCollectingTurf(true);
+                  try {
+                    const updated = cityBuildings.map(b => {
+                      const isOurs = b.gangId === gang.id || (b.ownerId && gang.members.includes(b.ownerId));
+                      if (isOurs && (b.accumulatedRent || 0) > 0) {
+                        return { ...b, accumulatedRent: 0 };
+                      }
+                      return b;
+                    });
+
+                    await updateDoc(doc(db, 'gangs', gang.id), {
+                      balance: increment(totalAccumulated),
+                      reputation: increment(Math.floor(totalAccumulated / 100000))
+                    });
+                    await setDoc(doc(db, 'city_maps', 'baghdad'), { buildings: updated }, { merge: true });
+                    toast.success(`تم تحصيل ${formatMoney(totalAccumulated)} من عوائد مقاطعات العصابة وأودعت بالخزينة بنجاح!`);
+                  } catch (err) {
+                    console.error(err);
+                    toast.error('فشل في تحصيل عوائد المقاطعات');
+                  } finally {
+                    setCollectingTurf(false);
+                  }
+                };
+
+                return (
+                  <div className="mt-8 pt-6 border-t border-white/5 space-y-6">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+                      <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
+                        <span className="text-[10px] text-zinc-500 font-bold block mb-1">المباني تحت راية العصابة</span>
+                        <span className="text-xl font-black text-white flex items-center gap-2">
+                          <Building2 size={18} className="text-purple-400" />
+                          {gangBlds.length} عقار تفاعلي
+                        </span>
+                      </div>
+
+                      <div className="p-4 bg-black/40 rounded-2xl border border-white/5">
+                        <span className="text-[10px] text-zinc-500 font-bold block mb-1">إجمالي الدخل اليومي للمقاطعات</span>
+                        <span className="text-xl font-black text-emerald-400 font-mono flex items-center gap-2">
+                          <TrendingUp size={18} />
+                          {formatMoney(dailyRev)} / يوم
+                        </span>
+                      </div>
+
+                      <div className="p-4 bg-black/40 rounded-2xl border border-white/5 flex flex-col justify-between">
+                        <div>
+                          <span className="text-[10px] text-zinc-500 font-bold block mb-1">إتاوات المقاطعات المتراكمة</span>
+                          <span className="text-xl font-black text-amber-400 font-mono">
+                            {formatMoney(totalAccumulated)}
+                          </span>
+                        </div>
+                        {totalAccumulated > 0 && hasPermission(profile?.gangRole, 'withdraw_money') && (
+                          <button
+                            onClick={handleCollectTurf}
+                            disabled={collectingTurf}
+                            className="mt-2 py-1.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-[10px] font-black transition-all flex items-center justify-center gap-1.5 shadow"
+                          >
+                            <DollarSign size={13} />
+                            تحصيل للخزينة
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Controlled Buildings Cards */}
+                    <div className="space-y-4">
+                      <h4 className="text-sm font-black text-white flex items-center gap-2">
+                        <Flame size={16} className="text-red-500" />
+                        سجل معاقل وعقارات العصابة بالمدينة ({gangBlds.length})
+                      </h4>
+
+                      {gangBlds.length === 0 ? (
+                        <div className="p-8 text-center bg-black/30 rounded-2xl border border-dashed border-zinc-800 text-zinc-500 text-xs">
+                          لا تملك العصابة أي عقار مسجل حتى الآن. اطلب من أعضاء العصابة شراء عقارات بالخريطة وتثبيت راية العصابة عليها!
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                          {gangBlds.map(bld => (
+                            <div key={bld.id} className="p-4 bg-black/50 rounded-2xl border border-purple-500/20 space-y-2">
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-white text-sm">{bld.name}</span>
+                                <span className="px-2 py-0.5 rounded text-[10px] bg-purple-500/20 text-purple-300 font-bold">
+                                  {bld.district}
+                                </span>
+                              </div>
+
+                              <p className="text-[11px] text-zinc-400 line-clamp-2">{bld.description}</p>
+
+                              <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[11px]">
+                                <span className="text-zinc-500">المسؤول: <span className="text-white font-bold">{bld.ownerName}</span></span>
+                                <span className="text-emerald-400 font-mono font-bold">{formatMoney(bld.dailyRevenue)}/يوم</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}

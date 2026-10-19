@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { toast } from 'sonner';
 
@@ -15,7 +15,24 @@ export const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+
+let dbInstance: any;
+try {
+  dbInstance = initializeFirestore(app, {
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager()
+    })
+  });
+} catch (e) {
+  try {
+    dbInstance = getFirestore(app);
+  } catch (err) {
+    console.error('Failed to initialize firestore with cache, falling back:', err);
+    dbInstance = getFirestore(app);
+  }
+}
+
+export const db = dbInstance;
 export const auth = getAuth(app);
 export const storage = getStorage(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -54,6 +71,11 @@ export interface FirestoreErrorInfo {
 export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
   const errorMessage = (error instanceof Error ? error.message : String(error)) || '';
   
+  if (errorMessage && (errorMessage.includes('offline') || errorMessage.includes('client is offline') || errorMessage.includes('backend') || errorMessage.includes('Could not reach Cloud Firestore backend'))) {
+    console.warn('Firestore offline / network warning:', errorMessage);
+    return;
+  }
+
   if (errorMessage && (errorMessage.includes('resource-exhausted') || errorMessage.includes('Quota limit exceeded') || errorMessage.includes('Quota exceeded') || errorMessage.includes('quota metric'))) {
     toast.error('تم استنفاد الحصة اليومية المجانية لقاعدة البيانات (Firestore Quota Exceeded). سيتم إعادة التعيين اليومي تلقائياً.', {
       duration: 10000,

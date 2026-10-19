@@ -202,6 +202,103 @@ async function startServer() {
     }
   });
 
+  // توليد صور بالذكاء الاصطناعي مع fallback تلقائي مضمون على Unsplash وعالم المافيا
+  app.post('/api/admin/generate-image', async (req, res) => {
+    try {
+      const { 
+        name, 
+        description, 
+        prompt, 
+        category = 'background', 
+        aspectRatio = (category === 'background' || category === 'backgrounds') ? '16:9' : '3:4',
+        oldImageUrl 
+      } = req.body;
+
+      // حذف الصورة القديمة إن كانت محلية وليست رابطاً خارجيًا أو افتراضيًا
+      if (oldImageUrl && typeof oldImageUrl === 'string' && oldImageUrl.startsWith('/images/')) {
+        try {
+          const oldPath = path.join(process.cwd(), 'public', oldImageUrl);
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+            console.log(`Deleted old local image: ${oldPath}`);
+          }
+        } catch (delErr) {
+          console.warn('Could not delete old image file:', delErr);
+        }
+      }
+
+      const subFolder = (category === 'background' || category === 'backgrounds') ? 'backgrounds' : ((category === 'npc' || category === 'npcs') ? 'npcs' : (category === 'mafia' ? 'mafia' : (category === 'wealthy' ? 'wealthy' : 'generated')));
+      const imagesDir = path.join(process.cwd(), 'public', 'images', subFolder);
+      if (!fs.existsSync(imagesDir)) {
+        fs.mkdirSync(imagesDir, { recursive: true });
+      }
+
+      const width = (category === 'background' || category === 'backgrounds') ? 1280 : 800;
+      const height = (category === 'background' || category === 'backgrounds') ? 720 : 1000;
+      const seed = Date.now();
+      const descriptiveText = prompt || description || name || 'baghdad mafia crime underworld';
+      const safePrompt = encodeURIComponent(`cinematic dark noir photorealistic iraqi baghdad mafia crime gangster ${descriptiveText}`.slice(0, 180));
+      const aiUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
+
+      let savedBuffer: Buffer | null = null;
+      let sourceUsed = 'ai_generator';
+
+      try {
+        console.log(`Generating image via AI for ${category} (${name}): ${aiUrl}`);
+        const pollRes = await fetch(aiUrl, { signal: AbortSignal.timeout(12000) });
+        if (pollRes.ok) {
+          const ab = await pollRes.arrayBuffer();
+          savedBuffer = Buffer.from(ab);
+        }
+      } catch (aiErr) {
+        console.warn('Primary AI generation timed out or failed, switching to curated dark noir fallback:', aiErr);
+      }
+
+      // Fallback to curated cinematic Unsplash dark noir / mafia images if primary failed
+      if (!savedBuffer || savedBuffer.length < 1000) {
+        sourceUsed = 'curated_fallback';
+        const fallbackUrls = (category === 'background' || category === 'backgrounds') ? [
+          'https://images.unsplash.com/photo-1514565131-fce0801e5785?auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1555626906-fcf10d6851b4?auto=format&fit=crop&q=80'
+        ] : [
+          'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80',
+          'https://images.unsplash.com/photo-1492562080023-ab3db95bfbce?auto=format&fit=crop&q=80'
+        ];
+        
+        const randomFallback = fallbackUrls[Math.floor(Math.random() * fallbackUrls.length)];
+        const fbRes = await fetch(randomFallback);
+        if (fbRes.ok) {
+          const fbAb = await fbRes.arrayBuffer();
+          savedBuffer = Buffer.from(fbAb);
+        }
+      }
+
+      if (!savedBuffer) {
+        throw new Error('تعذر جلب أو توليد الصورة');
+      }
+
+      const cleanSlug = (name || 'gen_img').replace(/[^a-zA-Z0-9]/g, '_').toLowerCase().slice(0, 20);
+      const filename = `${cleanSlug}_${Date.now()}.jpg`;
+      const destPath = path.join(imagesDir, filename);
+      fs.writeFileSync(destPath, savedBuffer);
+
+      const publicUrl = `/images/${subFolder}/${filename}`;
+      return res.json({
+        success: true,
+        imageUrl: publicUrl,
+        filename,
+        source: sourceUsed
+      });
+    } catch (err: any) {
+      console.error('Generate image error:', err);
+      return res.status(500).json({
+        error: err.message || 'حدث خطأ أثناء توليد الصورة'
+      });
+    }
+  });
+
   // حفظ صورة NPC مخصصة أو مرفوعة من الجهاز
   app.post('/api/admin/save-npc-image', async (req, res) => {
     try {

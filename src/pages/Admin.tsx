@@ -10,7 +10,7 @@ import {
   CheckCircle, Megaphone, Send, Users, UserMinus, Database, RefreshCw, 
   Download, Search, Activity, BarChart3, Eye, Upload, Link, AlertTriangle, 
   MoreVertical, UserPlus, ShieldAlert, Ban, Check, Globe, Calendar, 
-  Lock, Unlock, DollarSign, Swords, Zap, TrendingUp, Settings, FileText, ChevronLeft, ChevronRight, Sliders, GitMerge
+  Lock, Unlock, DollarSign, Swords, Zap, TrendingUp, Settings, FileText, ChevronLeft, ChevronRight, Sliders, GitMerge, Radio
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, formatMoney, formatDate, getRealisticAvatar, safeToMillis } from '../lib/utils';
@@ -30,6 +30,8 @@ import { GovernmentManager } from '../components/admin/GovernmentManager';
 import { EconomyManager } from '../components/admin/EconomyManager';
 import { BroadcastManager } from '../components/admin/BroadcastManager';
 import { NPCManager } from '../components/admin/NPCManager';
+import { LiveEventManager } from '../components/admin/LiveEventManager';
+import { SystemSettings } from '../components/admin/SystemSettings';
 
 export default function Admin() {
   const { t } = useTranslation();
@@ -44,7 +46,7 @@ export default function Admin() {
 
   // Active Admin Tab
   const [activeAdminTab, setActiveAdminTab] = useState<
-    'overview' | 'users' | 'npcs' | 'gangs' | 'government' | 'militias' | 'economy' | 'broadcasts' | 'database' | 'images' | 'cms' | 'analytics'
+    'overview' | 'users' | 'npcs' | 'gangs' | 'government' | 'militias' | 'economy' | 'broadcasts' | 'liveEvents' | 'database' | 'images' | 'cms' | 'analytics' | 'system'
   >('overview');
 
   // Search & Pagination
@@ -1063,9 +1065,11 @@ export default function Admin() {
           { id: 'militias', icon: Swords, label: 'المليشيات', count: users.filter(u => u.militia).length },
           { id: 'economy', icon: DollarSign, label: 'الاقتصاد' },
           { id: 'broadcasts', icon: Megaphone, label: 'الإذاعة' },
+          { id: 'liveEvents', icon: Radio, label: 'الحدث المباشر العاجل' },
           { id: 'database', icon: Database, label: 'قاعدة البيانات' },
           { id: 'images', icon: Upload, label: 'الصور' },
           { id: 'cms', icon: Settings, label: 'النظام CMS' },
+          { id: 'system', icon: Sliders, label: 'النظام (Core & Links)' },
           { id: 'analytics', icon: Activity, label: 'التحليلات' }
         ].map(tab => (
           <button
@@ -1567,6 +1571,11 @@ export default function Admin() {
         />
       )}
 
+      {/* TAB: LIVE EVENTS */}
+      {activeAdminTab === 'liveEvents' && (
+        <LiveEventManager adminName={profile?.displayName || 'المدير العام'} />
+      )}
+
       {/* TAB 8: DATABASE & BACKUP */}
       {activeAdminTab === 'database' && (
         <div className="space-y-3">
@@ -1659,7 +1668,10 @@ export default function Admin() {
       {/* TAB 10: CMS */}
       {activeAdminTab === 'cms' && <ControlCenter />}
 
-      {/* TAB 11: ANALYTICS */}
+      {/* TAB 11: SYSTEM */}
+      {activeAdminTab === 'system' && <SystemSettings />}
+
+      {/* TAB 12: ANALYTICS */}
       {activeAdminTab === 'analytics' && <AnalyticsDashboard />}
 
       {/* SUB-MODALS */}

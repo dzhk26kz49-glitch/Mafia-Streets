@@ -268,7 +268,9 @@ export default function InfluenceMap() {
       bld.id,
       profile.uid,
       profile.displayName,
-      profile.cleanMoney
+      profile.cleanMoney,
+      profile.gangId,
+      profile.gangName
     );
     setIsProcessingAction(false);
 
@@ -280,6 +282,8 @@ export default function InfluenceMap() {
         ownerType: 'player',
         ownerName: profile.displayName,
         ownerId: profile.uid,
+        gangId: profile.gangId,
+        gangName: profile.gangName,
         isRented: false
       } : b));
     } else {
@@ -304,7 +308,9 @@ export default function InfluenceMap() {
       profile.uid,
       profile.displayName,
       rentDurationDays,
-      profile.cleanMoney
+      profile.cleanMoney,
+      profile.gangId,
+      profile.gangName
     );
     setIsProcessingAction(false);
 
@@ -315,8 +321,58 @@ export default function InfluenceMap() {
         isRented: true,
         tenantName: profile.displayName,
         tenantId: profile.uid,
+        gangId: profile.gangId,
+        gangName: profile.gangName,
         rentExpiresAt: Date.now() + rentDurationDays * 86400000
       } : b));
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  // ترقية منظومة أمن العقار
+  const handleUpgradeSecurity = async (bld: CityBuilding) => {
+    if (!profile || isProcessingAction) return;
+    setIsProcessingAction(true);
+    const res = await CityBuildingsEngine.upgradeSecurity('baghdad', bld.id, profile.uid, profile.cleanMoney);
+    setIsProcessingAction(false);
+    if (res.success) {
+      toast.success(res.message);
+      setCityBuildings(prev => prev.map(b => b.id === bld.id ? { ...b, securityLevel: res.newLevel } : b));
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  // تثبيت راية العصابة على العقار
+  const handleClaimGangTurf = async (bld: CityBuilding) => {
+    if (!profile?.gangId || isProcessingAction) {
+      toast.error('يجب أن تكون عضواً في عصابة لتثبيت رايتها!');
+      return;
+    }
+    setIsProcessingAction(true);
+    const res = await CityBuildingsEngine.claimGangTurf('baghdad', bld.id, profile.uid, profile.gangId, profile.gangName || 'عصابتنا');
+    setIsProcessingAction(false);
+    if (res.success) {
+      toast.success(res.message);
+      setCityBuildings(prev => prev.map(b => b.id === bld.id ? { ...b, gangId: profile.gangId, gangName: profile.gangName || 'عصابتنا' } : b));
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  // تحويل عوائد العقار لخزينة العصابة
+  const handleDonateRentToGang = async (bld: CityBuilding) => {
+    if (!profile?.gangId || isProcessingAction) {
+      toast.error('لست عضواً في عصابة لتحويل العوائد!');
+      return;
+    }
+    setIsProcessingAction(true);
+    const res = await CityBuildingsEngine.donateRentToGang('baghdad', bld.id, profile.uid, profile.gangId);
+    setIsProcessingAction(false);
+    if (res.success) {
+      toast.success(res.message);
+      setCityBuildings(prev => prev.map(b => b.id === bld.id ? { ...b, accumulatedRent: 0 } : b));
     } else {
       toast.error(res.message);
     }
@@ -696,6 +752,11 @@ export default function InfluenceMap() {
                     {isRentedByMe && (
                       <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-500 rounded-full border border-black shadow" />
                     )}
+                    {bld.gangName && (
+                      <span className="absolute -top-1 -left-1 px-1 bg-red-600 text-white rounded text-[8px] font-black border border-black shadow" title={`عصابة: ${bld.gangName}`}>
+                        🏴
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -786,11 +847,12 @@ export default function InfluenceMap() {
 
               {/* أزرار الإجراءات الحقيقية للعقار */}
               <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-white/5">
-                {/* زر تحصيل أرباح الإيجار للمالك */}
-                {selectedBuilding.ownerType === 'player' && selectedBuilding.ownerId === profile?.uid ? (
-                  <div className="flex items-center gap-3 w-full sm:w-auto">
-                    <div className="bg-black/50 px-4 py-2 rounded-xl border border-white/5">
-                      <span className="text-[10px] text-zinc-400 block">أرباح الإيجار المتراكمة:</span>
+                {/* زر تحصيل أرباح الإيجار وإجراءات العصابة والأمن للمالك والمستأجر */}
+                {(selectedBuilding.ownerType === 'player' && selectedBuilding.ownerId === profile?.uid) || 
+                 (selectedBuilding.isRented && selectedBuilding.tenantId === profile?.uid) ? (
+                  <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+                    <div className="bg-black/50 px-3.5 py-2 rounded-xl border border-white/5">
+                      <span className="text-[10px] text-zinc-400 block">العوائد المتراكمة:</span>
                       <span className="text-sm font-black text-emerald-400 font-mono">
                         {formatMoney(selectedBuilding.accumulatedRent || 0)}
                       </span>
@@ -799,10 +861,42 @@ export default function InfluenceMap() {
                     <button
                       onClick={() => handleCollectRent(selectedBuilding)}
                       disabled={isProcessingAction || (selectedBuilding.accumulatedRent || 0) <= 0}
-                      className="px-5 py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-lg"
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-lg"
                     >
-                      <Coins size={16} />
-                      تحصيل عوائد الإيجار
+                      <Coins size={15} />
+                      تحصيل كاش
+                    </button>
+
+                    {profile?.gangId && (selectedBuilding.accumulatedRent || 0) > 0 && (
+                      <button
+                        onClick={() => handleDonateRentToGang(selectedBuilding)}
+                        disabled={isProcessingAction}
+                        className="px-4 py-2.5 bg-purple-600 hover:bg-purple-500 disabled:opacity-40 text-white rounded-xl text-xs font-black transition-all flex items-center gap-1.5 shadow-lg"
+                        title="إيداع العوائد في خزينة العصابة"
+                      >
+                        <Crown size={15} />
+                        إيداع بالخزينة
+                      </button>
+                    )}
+
+                    {profile?.gangId && !selectedBuilding.gangName && (
+                      <button
+                        onClick={() => handleClaimGangTurf(selectedBuilding)}
+                        disabled={isProcessingAction}
+                        className="px-3.5 py-2.5 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-lg"
+                      >
+                        <Shield size={14} />
+                        تثبيت راية العصابة
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => handleUpgradeSecurity(selectedBuilding)}
+                      disabled={isProcessingAction || (selectedBuilding.securityLevel || 1) >= 5}
+                      className="px-3.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 text-zinc-300 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-zinc-700"
+                    >
+                      <Lock size={14} />
+                      ترقية الحماية ({selectedBuilding.securityLevel || 1}/5)
                     </button>
                   </div>
                 ) : (

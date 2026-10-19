@@ -1,16 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { formatNumber, formatMoney, safeToMillis } from '../lib/utils';
 import { getVIPMultiplier } from '../lib/vip';
 import { getActiveRolePerks } from '../lib/rolePerks';
 import { useAuthStore, BuiltProperty } from '../store/useAuthStore';
-import { doc, updateDoc, getDoc, increment } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, increment, onSnapshot } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { MARKET_ITEMS } from '../lib/items';
 import { toast } from 'sonner';
 import { soundEngine } from '../services/soundEngine';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Building2, Shield, Landmark, Crosshair, Beaker, Home, RefreshCw, Wrench, ChevronDown, ChevronUp, Users, CheckCircle, Skull, Briefcase, Zap, Target, DollarSign, TrendingUp, AlertTriangle, Car } from 'lucide-react';
+import { 
+  Building2, 
+  Shield, 
+  Landmark, 
+  Crosshair, 
+  Beaker, 
+  Home, 
+  RefreshCw, 
+  Wrench, 
+  ChevronDown, 
+  ChevronUp, 
+  Users, 
+  CheckCircle, 
+  Skull, 
+  Briefcase, 
+  Zap, 
+  Target, 
+  DollarSign, 
+  TrendingUp, 
+  AlertTriangle, 
+  Car,
+  MapPin,
+  Key,
+  Crown,
+  Swords,
+  Coins,
+  Sparkles,
+  Lock,
+  ShieldCheck,
+  ChevronRight,
+  ExternalLink,
+  Flame
+} from 'lucide-react';
+import { CityBuilding } from '../types/npcTypes';
+import { INITIAL_CITY_BUILDINGS, CityBuildingsEngine } from '../services/cityBuildingsData';
 
 const CITIES = ['baghdad', 'damascus', 'beirut', 'cairo', 'dubai'];
 
@@ -27,27 +62,304 @@ const PROPERTY_TYPES = [
   { id: 'hotel', price: 7500000, icon: Building2, color: 'text-blue-400', bg: 'bg-blue-400/20', border: 'border-blue-400/50', glow: 'shadow-blue-400/20' },
 ];
 
+const DISTRICTS_INFO = [
+  { id: 'حي ناطحات السحاب', name: 'حي ناطحات السحاب والمصارف', icon: '🏙️', color: 'from-amber-500/20 to-zinc-900 border-amber-500/40 text-amber-400' },
+  { id: 'مجمع الملاهي والترفيه', name: 'مجمع الملاهي والترفيه', icon: '🎡', color: 'from-pink-500/20 to-zinc-900 border-pink-500/40 text-pink-400' },
+  { id: 'حوض الميناء والمستودعات', name: 'حوض الميناء والمستودعات', icon: '⚓', color: 'from-blue-500/20 to-zinc-900 border-blue-500/40 text-blue-400' },
+  { id: 'شبكة القنوات المائية', name: 'شبكة القنوات والكورنيش', icon: '🌊', color: 'from-cyan-500/20 to-zinc-900 border-cyan-500/40 text-cyan-400' },
+  { id: 'الحي السكني والحدائق', name: 'الحي السكني والفلل', icon: '🏡', color: 'from-emerald-500/20 to-zinc-900 border-emerald-500/40 text-emerald-400' },
+  { id: 'المربع الأمني والترفيه الليلي', name: 'المربع الأمني وكازينو المدينة', icon: '🎰', color: 'from-purple-500/20 to-zinc-900 border-purple-500/40 text-purple-400' },
+];
+
 export default function Properties() {
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const { profile } = useAuthStore();
+
+  // Navigation tab: 'map_turf' (عقارات الخريطة والنفوذ) | 'facilities' (المنشآت التكتيكية) | 'gang_influence' (نفوذ العصابة)
+  const [activeMainTab, setActiveMainTab] = useState<'map_turf' | 'facilities' | 'gang_influence'>('map_turf');
+
+  // Map Real Estate states
+  const [cityBuildings, setCityBuildings] = useState<CityBuilding[]>(INITIAL_CITY_BUILDINGS);
+  const [mapTurfFilter, setMapTurfFilter] = useState<'my_turf' | 'market'>('my_turf');
+  const [selectedDistrictFilter, setSelectedDistrictFilter] = useState<string>('all');
+  const [rentDurationDays, setRentDurationDays] = useState<number>(3);
+
+  // Tactical Built Properties states
   const [selectedCity, setSelectedCity] = useState<string>(profile?.city || 'baghdad');
   const [expandedProperty, setExpandedProperty] = useState<string | null>(null);
   const [buildingOnTile, setBuildingOnTile] = useState<number | null>(null);
-  const [selectedInventoryCar, setSelectedInventoryCar] = useState<string | null>(null);
   const [currentTime, setCurrentTime] = useState(Date.now());
   const [processing, setProcessing] = useState(false);
 
+  // Sync real-time City Map buildings from Firestore
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'city_maps', 'baghdad'), (snap) => {
+      if (snap.exists() && snap.data()?.buildings) {
+        const remote = snap.data().buildings as CityBuilding[];
+        const merged = INITIAL_CITY_BUILDINGS.map(initBld => {
+          const found = remote.find(r => r.id === initBld.id);
+          if (found) {
+            return {
+              ...initBld,
+              ownerType: found.ownerType,
+              ownerId: found.ownerId,
+              ownerName: found.ownerName,
+              isRented: found.isRented,
+              tenantId: found.tenantId,
+              tenantName: found.tenantName,
+              rentExpiresAt: found.rentExpiresAt,
+              accumulatedRent: found.accumulatedRent ?? initBld.accumulatedRent,
+              gangId: found.gangId,
+              gangName: found.gangName,
+              securityLevel: found.securityLevel || 1,
+              lastRevenueCollection: found.lastRevenueCollection
+            };
+          }
+          return initBld;
+        });
+        setCityBuildings(merged);
+      } else {
+        setCityBuildings(INITIAL_CITY_BUILDINGS);
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
+  // Update current time for minute profits
   useEffect(() => {
     const interval = setInterval(() => {
       setCurrentTime(Date.now());
-    }, 60000); // Update every minute
+    }, 60000);
     return () => clearInterval(interval);
   }, []);
 
+  // Filtered Map Buildings
+  const myMapControlledBuildings = useMemo(() => {
+    if (!profile) return [];
+    return cityBuildings.filter(b => 
+      (b.ownerType === 'player' && b.ownerId === profile.uid) ||
+      (b.isRented && b.tenantId === profile.uid)
+    );
+  }, [cityBuildings, profile]);
+
+  const totalMapAccumulatedRent = useMemo(() => {
+    return myMapControlledBuildings.reduce((sum, b) => sum + (b.accumulatedRent || 0), 0);
+  }, [myMapControlledBuildings]);
+
+  const totalMapDailyRevenue = useMemo(() => {
+    return myMapControlledBuildings.reduce((sum, b) => sum + (b.dailyRevenue || 0), 0);
+  }, [myMapControlledBuildings]);
+
+  // District Influence Stats
+  const districtInfluenceStats = useMemo(() => {
+    return DISTRICTS_INFO.map(d => {
+      const buildingsInDistrict = cityBuildings.filter(b => b.district === d.id);
+      const total = buildingsInDistrict.length || 1;
+      const myOwned = buildingsInDistrict.filter(b => b.ownerType === 'player' && b.ownerId === profile?.uid).length;
+      const myRented = buildingsInDistrict.filter(b => b.isRented && b.tenantId === profile?.uid).length;
+      const myControlled = myOwned + myRented;
+      const influencePct = Math.round((myControlled / total) * 100);
+
+      // Gang influence in this district
+      const gangBuildings = profile?.gangId 
+        ? buildingsInDistrict.filter(b => b.gangId === profile.gangId) 
+        : [];
+      const gangInfluencePct = Math.round((gangBuildings.length / total) * 100);
+
+      let status = 'خاضع لسيطرة نقابات الظل';
+      if (influencePct >= 75) status = 'نفوذ وهيمنة مطلقة 👑';
+      else if (influencePct >= 50) status = 'سيطرة الأغلبية 🛡️';
+      else if (influencePct >= 25) status = 'نفوذ تجاري متصاعد ⚡';
+      else if (influencePct > 0) status = 'موطئ قدم تجاري 📍';
+
+      return {
+        ...d,
+        total,
+        myControlled,
+        influencePct,
+        gangInfluencePct,
+        status
+      };
+    });
+  }, [cityBuildings, profile]);
+
+  // Overall City Influence
+  const overallInfluenceScore = useMemo(() => {
+    if (cityBuildings.length === 0) return 0;
+    return Math.round((myMapControlledBuildings.length / cityBuildings.length) * 100);
+  }, [myMapControlledBuildings, cityBuildings]);
+
+  // Tactical Built Properties calculation
   const builtProperties = profile?.builtProperties || [];
   const cityProperties = builtProperties.filter(p => p.city === selectedCity);
   const ownedTilesInCity = profile?.ownedTiles?.[selectedCity] || [];
 
+  const calculateMinuteProfit = (property: BuiltProperty) => {
+    let baseHourly = 0;
+    if (property.type === 'casino') baseHourly = 1500;
+    else if (property.type === 'hotel') baseHourly = 800;
+    else if (property.type === 'drug_factory') baseHourly = 500 + (property.workers || 0) * 20;
+    else if (property.type === 'weapon_stash') baseHourly = 800;
+    else if (property.type === 'bank') baseHourly = 1200;
+    else if (property.type === 'ammunition_factory') baseHourly = 1000;
+    else if (property.type === 'headquarters') baseHourly = 2000;
+    
+    let multiplier = 1 + (property.level - 1) * 0.01;
+    if (property.upgrades) {
+      Object.values(property.upgrades).forEach(val => {
+        multiplier += (Number(val) || 0) * 0.005;
+      });
+    }
+
+    if (property.managerId) {
+      multiplier *= 1.1;
+      let manager: any = profile?.family?.wives.find(w => w.id === property.managerId);
+      if (!manager) {
+        manager = profile?.family?.wives.flatMap(w => w.children).find(c => c.id === property.managerId);
+      }
+      if (manager && manager.traits?.includes('clever')) {
+        multiplier *= 1.2;
+      }
+    }
+    
+    return Math.floor((baseHourly * multiplier) / 60);
+  };
+
+  const totalFacilitiesHourlyProfit = useMemo(() => {
+    return builtProperties.reduce((acc, p) => acc + calculateMinuteProfit(p) * 60, 0);
+  }, [builtProperties]);
+
+  // MAP REAL ESTATE ACTIONS
+  const handleCollectMapRent = async (bld: CityBuilding) => {
+    if (!profile || processing) return;
+    setProcessing(true);
+    const res = await CityBuildingsEngine.collectRent('baghdad', bld.id, profile.uid);
+    setProcessing(false);
+    if (res.success) {
+      soundEngine.playCashSound();
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleCollectAllMapRents = async () => {
+    if (!profile || processing) return;
+    setProcessing(true);
+    const res = await CityBuildingsEngine.collectAllPlayerRents('baghdad', profile.uid);
+    setProcessing(false);
+    if (res.success) {
+      soundEngine.playCashSound();
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleDonateRentToGang = async (bld: CityBuilding) => {
+    if (!profile?.gangId || processing) {
+      toast.error('أنت لست منضماً لأي عصابة لتحويل العوائد إليها!');
+      return;
+    }
+    setProcessing(true);
+    const res = await CityBuildingsEngine.donateRentToGang('baghdad', bld.id, profile.uid, profile.gangId);
+    setProcessing(false);
+    if (res.success) {
+      soundEngine.playCashSound();
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleUpgradeBuildingSecurity = async (bld: CityBuilding) => {
+    if (!profile || processing) return;
+    setProcessing(true);
+    const res = await CityBuildingsEngine.upgradeSecurity('baghdad', bld.id, profile.uid, profile.cleanMoney);
+    setProcessing(false);
+    if (res.success) {
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleClaimGangTurf = async (bld: CityBuilding) => {
+    if (!profile?.gangId || processing) {
+      toast.error('يجب أن تكون عضواً في عصابة لتثبيت رايتها!');
+      return;
+    }
+    setProcessing(true);
+    const res = await CityBuildingsEngine.claimGangTurf(
+      'baghdad', 
+      bld.id, 
+      profile.uid, 
+      profile.gangId, 
+      profile.gangName || 'عصابتنا'
+    );
+    setProcessing(false);
+    if (res.success) {
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleBuyMapBuilding = async (bld: CityBuilding) => {
+    if (!profile || processing) return;
+    if (profile.cleanMoney < bld.purchasePrice) {
+      toast.error(`رصيدك غير كافٍ! سعر العقار هو ${formatMoney(bld.purchasePrice)}`);
+      return;
+    }
+    setProcessing(true);
+    const res = await CityBuildingsEngine.purchaseBuilding(
+      'baghdad',
+      bld.id,
+      profile.uid,
+      profile.displayName,
+      profile.cleanMoney,
+      profile.gangId,
+      profile.gangName
+    );
+    setProcessing(false);
+    if (res.success) {
+      soundEngine.playCashSound();
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  const handleRentMapBuilding = async (bld: CityBuilding) => {
+    if (!profile || processing) return;
+    const totalCost = bld.dailyRent * rentDurationDays;
+    if (profile.cleanMoney < totalCost) {
+      toast.error(`تكلفة الإيجار لـ ${rentDurationDays} أيام هي ${formatMoney(totalCost)} ورصيدك لا يكفي!`);
+      return;
+    }
+    setProcessing(true);
+    const res = await CityBuildingsEngine.rentBuilding(
+      'baghdad',
+      bld.id,
+      profile.uid,
+      profile.displayName,
+      rentDurationDays,
+      profile.cleanMoney,
+      profile.gangId,
+      profile.gangName
+    );
+    setProcessing(false);
+    if (res.success) {
+      soundEngine.playCashSound();
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
+  };
+
+  // TACTICAL PROPERTIES ACTIONS
   const handleBuild = async (propType: typeof PROPERTY_TYPES[0], tileId: number) => {
     if (!profile || processing) return;
     if (profile.cleanMoney < propType.price) {
@@ -56,7 +368,6 @@ export default function Properties() {
     }
 
     setProcessing(true);
-
     const newProperty: BuiltProperty = {
       id: `${propType.id}_${selectedCity}_${tileId}_${Date.now()}`,
       type: propType.id as any,
@@ -73,6 +384,7 @@ export default function Properties() {
         cleanMoney: increment(-propType.price),
         builtProperties: [...builtProperties, newProperty]
       });
+      soundEngine.playCashSound();
       toast.success(t('properties.buildSuccess', { property: t(`properties.types.${propType.id}`), city: t(`map.cities.${selectedCity}`) }));
       setBuildingOnTile(null);
     } catch (error) {
@@ -85,15 +397,15 @@ export default function Properties() {
   const handleSell = async (property: BuiltProperty) => {
     if (!profile || processing) return;
     const propType = PROPERTY_TYPES.find(pt => pt.id === property.type)!;
-    const sellPrice = Math.floor(propType.price * 0.5); // Sell for 50% of original price
+    const sellPrice = Math.floor(propType.price * 0.5);
 
     setProcessing(true);
-
     try {
       await updateDoc(doc(db, 'users', profile.uid), {
         cleanMoney: increment(sellPrice),
         builtProperties: builtProperties.filter(p => p.id !== property.id)
       });
+      soundEngine.playCashSound();
       toast.success(t('properties.sellSuccess', { property: t(`properties.types.${property.type}`) }));
       setExpandedProperty(null);
     } catch (error) {
@@ -101,10 +413,6 @@ export default function Properties() {
     } finally {
       setProcessing(false);
     }
-  };
-
-  const toggleManage = (propId: string) => {
-    setExpandedProperty(expandedProperty === propId ? null : propId);
   };
 
   const handleUpgrade = async (property: BuiltProperty, upgradeKey: string, cost: number) => {
@@ -115,7 +423,6 @@ export default function Properties() {
     }
 
     setProcessing(true);
-
     const updatedProperties = builtProperties.map(p => {
       if (p.id === property.id) {
         const currentLevel = p.upgrades?.[upgradeKey] || 0;
@@ -151,13 +458,9 @@ export default function Properties() {
     }
 
     setProcessing(true);
-
     const updatedProperties = builtProperties.map(p => {
       if (p.id === property.id) {
-        return {
-          ...p,
-          workers: (p.workers || 0) + 1
-        };
+        return { ...p, workers: (p.workers || 0) + 1 };
       }
       return p;
     });
@@ -184,7 +487,6 @@ export default function Properties() {
     }
 
     setProcessing(true);
-
     const updatedProperties = builtProperties.map(p => {
       if (p.id === property.id) {
         return { ...p, level: p.level + 1 };
@@ -205,269 +507,8 @@ export default function Properties() {
     }
   };
 
-  const handleModifyCar = async (property: BuiltProperty, carName: string) => {
-    if (!profile || processing) return;
-    const inventory = profile.inventory || { cars: {}, bikes: 0, weapons: {}, drugs: {}, armor: {}, tools: {} };
-    const carCount = inventory.cars?.[carName] || 0;
-    if (carCount <= 0) {
-      toast.error(t('properties.garage.noCars'));
-      return;
-    }
-    let cost = 50000;
-    if (property.managerId) cost *= 0.5; // 50% discount if managed
-
-    if (profile.cleanMoney < cost) {
-      toast.error(t('common.noMoney'));
-      return;
-    }
-
-    setProcessing(true);
-
-    const newVehicle = {
-      id: `veh_${Date.now()}`,
-      name: `${t('properties.garage.modifiedCar')} (${carName})`,
-      image: 'https://images.unsplash.com/photo-1583121274602-3e2820c69888?w=800&q=80',
-      armorLevel: 0,
-      power: 100
-    };
-
-    const updatedInventoryCars = { ...inventory.cars };
-    if (updatedInventoryCars[carName] > 1) {
-      updatedInventoryCars[carName]--;
-    } else {
-      delete updatedInventoryCars[carName];
-    }
-
-    try {
-      await updateDoc(doc(db, 'users', profile.uid), {
-        cleanMoney: increment(-cost),
-        'inventory.cars': updatedInventoryCars,
-        vehicles: [...(profile.vehicles || []), newVehicle]
-      });
-      toast.success(t('properties.garage.modifySuccess'));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleSellInventoryCar = async (carName: string) => {
-    if (!profile || processing) return;
-    const inventory = profile.inventory || { cars: {}, bikes: 0, weapons: {}, drugs: {}, armor: {}, tools: {} };
-    const carCount = inventory.cars?.[carName] || 0;
-    if (carCount <= 0) return;
-
-    // Find price from MARKET_ITEMS
-    const carItem = MARKET_ITEMS.cars.find(item => item.name === carName);
-    const sellPrice = carItem ? Math.floor(carItem.price * 0.5) : 2500;
-
-    setProcessing(true);
-
-    const updatedInventoryCars = { ...inventory.cars };
-    if (updatedInventoryCars[carName] > 1) {
-      updatedInventoryCars[carName]--;
-    } else {
-      delete updatedInventoryCars[carName];
-    }
-
-    try {
-      await updateDoc(doc(db, 'users', profile.uid), {
-        cleanMoney: increment(sellPrice),
-        'inventory.cars': updatedInventoryCars
-      });
-      toast.success(t('properties.garage.sellSuccess'));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleSellModifiedVehicle = async (vehicleId: string) => {
-    if (!profile || processing) return;
-    const vehicle = profile.vehicles?.find(v => v.id === vehicleId);
-    if (!vehicle) return;
-
-    const sellPrice = 25000 + (vehicle.armorLevel * 10000); // Base modified price + armor bonus
-
-    setProcessing(true);
-
-    try {
-      await updateDoc(doc(db, 'users', profile.uid), {
-        cleanMoney: increment(sellPrice),
-        vehicles: profile.vehicles?.filter(v => v.id !== vehicleId)
-      });
-      toast.success(t('properties.garage.sellSuccess'));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleUpgradeArmor = async (property: BuiltProperty, vehicleId: string, currentLevel: number) => {
-    if (!profile || processing) return;
-    if (currentLevel >= 5) {
-      toast.error(t('properties.garage.maxArmor'));
-      return;
-    }
-    let cost = 25000 * (currentLevel + 1);
-    if (property.managerId) cost *= 0.5; // 50% discount if managed
-
-    if (profile.cleanMoney < cost) {
-      toast.error(t('common.noMoney'));
-      return;
-    }
-
-    setProcessing(true);
-
-    const updatedVehicles = (profile.vehicles || []).map(v => {
-      if (v.id === vehicleId) {
-        return { ...v, armorLevel: v.armorLevel + 1, power: v.power + 50 };
-      }
-      return v;
-    });
-
-    try {
-      await updateDoc(doc(db, 'users', profile.uid), {
-        cleanMoney: increment(-cost),
-        vehicles: updatedVehicles
-      });
-      toast.success(t('properties.garage.armorUpgradeSuccess'));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleDonateProfitsToGang = async (property: BuiltProperty) => {
-    if (!profile?.gangId) {
-      toast.error(t('properties.headquarters.noGang'));
-      return;
-    }
-
-    const lastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || currentTime);
-    const minutesPassed = Math.floor((currentTime - lastCollection) / (1000 * 60));
-    const minuteProfit = calculateMinuteProfit(property);
-    const perks = getActiveRolePerks(profile);
-    const profitMultiplier = 1 + (perks.traderProfitBonusPercent / 100);
-    const profit = Math.floor(minuteProfit * profitMultiplier * minutesPassed);
-
-    if (profit < 1) {
-      toast.error(t('properties.noProfits'));
-      return;
-    }
-
-    setProcessing(true);
-
-    try {
-      const gangRef = doc(db, 'gangs', profile.gangId);
-      const gangSnap = await getDoc(gangRef);
-      
-      if (!gangSnap.exists()) {
-        toast.error('العصابة غير موجودة!');
-        return;
-      }
-
-      const gangData = gangSnap.data();
-      await updateDoc(gangRef, {
-        vault: (gangData.vault || 0) + profit
-      });
-
-      const updatedProperties = builtProperties.map(p => 
-        p.id === property.id ? { ...p, lastProfitCollection: currentTime } : p
-      );
-
-      await updateDoc(doc(db, 'users', profile.uid), {
-        builtProperties: updatedProperties
-      });
-
-      toast.success(t('properties.headquarters.profitsDonated', { amount: formatMoney(profit) }));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, 'gangs');
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const handleLaunder = async (property: BuiltProperty) => {
-    if (!profile || processing) return;
-    
-    const baseCapacity = (property.upgrades?.washers || 0) * 10000 + 5000;
-    let capacity = baseCapacity * (1 + (property.level - 1) * 0.5);
-    
-    if (property.managerId) {
-      capacity *= 1.5; // 50% more capacity
-    }
-    
-    if (profile.dirtyMoney < capacity) {
-      toast.error(t('common.noDirtyMoney'));
-      return;
-    }
-
-    setProcessing(true);
-
-    try {
-      let fee = 0.2 * (1 - (property.level - 1) * 0.05);
-      if (property.managerId) {
-        fee *= 0.8; // 20% less fee
-      }
-      const cleanAmount = capacity * (1 - Math.max(0.05, fee));
-      await updateDoc(doc(db, 'users', profile.uid), {
-        dirtyMoney: increment(-capacity),
-        cleanMoney: increment(cleanAmount)
-      });
-      toast.success(t('properties.laundromat.washSuccess', { amount: formatNumber(capacity) }));
-    } catch (error) {
-      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
-    } finally {
-      setProcessing(false);
-    }
-  };
-
-  const calculateMinuteProfit = (property: BuiltProperty) => {
-    let baseHourly = 0;
-    if (property.type === 'casino') baseHourly = 1500;
-    else if (property.type === 'hotel') baseHourly = 800;
-    else if (property.type === 'drug_factory') baseHourly = 500 + (property.workers || 0) * 20;
-    else if (property.type === 'weapon_stash') baseHourly = 800;
-    else if (property.type === 'bank') baseHourly = 1200;
-    else if (property.type === 'ammunition_factory') baseHourly = 1000;
-    else if (property.type === 'headquarters') baseHourly = 2000;
-    
-    // Add level bonus
-    let multiplier = 1 + (property.level - 1) * 0.01;
-
-    // Add internal upgrades bonus (each upgrade level adds 10%)
-    if (property.upgrades) {
-      Object.values(property.upgrades).forEach(val => {
-        multiplier += (Number(val) || 0) * 0.005;
-      });
-    }
-
-    // Add manager bonus (50% increase)
-    if (property.managerId) {
-      multiplier *= 1.1;
-      
-      // Find manager to check for traits
-      let manager: any = profile?.family?.wives.find(w => w.id === property.managerId);
-      if (!manager) {
-        manager = profile?.family?.wives.flatMap(w => w.children).find(c => c.id === property.managerId);
-      }
-      
-      if (manager && manager.traits?.includes('clever')) {
-        multiplier *= 1.2;
-      }
-    }
-    
-    return Math.floor((baseHourly * multiplier) / 60);
-  };
-
   const handleToggleSafeHouse = async () => {
     if (!profile) return;
-    
     try {
       await updateDoc(doc(db, 'users', profile.uid), {
         inSafeHouse: !profile.inSafeHouse
@@ -479,20 +520,47 @@ export default function Properties() {
     }
   };
 
-  const handleCollectProfits = async (property: BuiltProperty) => {
+  const handleLaunder = async (property: BuiltProperty) => {
     if (!profile || processing) return;
-    
+    const baseCapacity = (property.upgrades?.washers || 0) * 10000 + 5000;
+    let capacity = baseCapacity * (1 + (property.level - 1) * 0.5);
+    if (property.managerId) capacity *= 1.5;
+
+    if (profile.dirtyMoney < capacity) {
+      toast.error(t('common.noDirtyMoney'));
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      let fee = 0.2 * (1 - (property.level - 1) * 0.05);
+      if (property.managerId) fee *= 0.8;
+      const cleanAmount = capacity * (1 - Math.max(0.05, fee));
+      await updateDoc(doc(db, 'users', profile.uid), {
+        dirtyMoney: increment(-capacity),
+        cleanMoney: increment(cleanAmount)
+      });
+      soundEngine.playCashSound();
+      toast.success(t('properties.laundromat.washSuccess', { amount: formatNumber(capacity) }));
+    } catch (error) {
+      handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
+    } finally {
+      setProcessing(false);
+    }
+  };
+
+  const handleCollectFacilityProfits = async (property: BuiltProperty) => {
+    if (!profile || processing) return;
     const now = Date.now();
     const lastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || Date.now());
     const minutesPassed = Math.floor((now - lastCollection) / (1000 * 60));
-    
+
     if (minutesPassed < 1) {
       toast.error(t('properties.noProfits'));
       return;
     }
 
     setProcessing(true);
-
     const baseMinuteProfit = calculateMinuteProfit(property);
     const perks = getActiveRolePerks(profile);
     const traderMultiplier = 1 + (perks.traderProfitBonusPercent / 100);
@@ -506,29 +574,25 @@ export default function Properties() {
       return p;
     });
 
-    const newFamilyIncome = (profile.familyFinances?.income || 0) + totalProfit;
-
     if (property.type === 'headquarters') {
       if (!profile.gangId) {
         toast.error(t('properties.headquarters.noGang'));
         setProcessing(false);
         return;
       }
-      
       try {
         const gangRef = doc(db, 'gangs', profile.gangId);
         const gangDoc = await getDoc(gangRef);
         if (gangDoc.exists()) {
-          const gangData = gangDoc.data();
           await updateDoc(gangRef, {
-            bankBalance: increment(totalProfit)
+            balance: increment(totalProfit)
           });
-          
           await updateDoc(doc(db, 'users', profile.uid), {
             builtProperties: updatedProperties,
             'familyFinances.income': increment(totalProfit),
             'familyFinances.lastUpdate': now
           });
+          soundEngine.playCashSound();
           toast.success(t('properties.headquarters.profitsDonated', { amount: formatNumber(totalProfit) }));
         }
       } catch (error) {
@@ -547,8 +611,7 @@ export default function Properties() {
         'familyFinances.lastUpdate': now
       });
       soundEngine.playCashSound();
-      const bonusMsg = perks.traderProfitBonusPercent > 0 ? ` (شامل +${perks.traderProfitBonusPercent}% حنكة التاجر 📈)` : '';
-      toast.success(t('properties.profitsCollected', { amount: formatNumber(totalProfit) }) + bonusMsg);
+      toast.success(t('properties.profitsCollected', { amount: formatNumber(totalProfit) }));
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
     } finally {
@@ -556,748 +619,676 @@ export default function Properties() {
     }
   };
 
-  const renderManagementUI = (property: BuiltProperty) => {
-    const familyMembers = [
-      ...(profile?.family?.wives || []).map(w => ({ id: w.id, name: w.name, type: 'wife', gender: 'female' })),
-      ...(profile?.family?.wives || []).flatMap(w => (w.children || []).map(c => ({ id: c.id, name: c.name, type: 'child', gender: c.gender })))
-    ];
-
-    const managerAssignment = (
-      <div className="p-6 bg-black/40 rounded-2xl border border-zinc-800 mb-8 relative overflow-hidden group">
-        <div className="absolute top-0 right-0 w-1 h-full bg-red-600 group-hover:bg-red-500 transition-colors"></div>
-        <div className="flex items-center gap-4 mb-6">
-          <div className="p-3 bg-red-600/10 rounded-xl border border-red-600/20">
-            <Users className="w-6 h-6 text-red-500" />
-          </div>
-          <div>
-            <h4 className="font-black text-white text-sm uppercase tracking-tighter italic">إدارة المنشأة</h4>
-            <p className="text-[10px] text-zinc-500 font-bold">تعيين أحد أفراد العائلة لإدارة العمليات وزيادة الأرباح بنسبة 50%</p>
-          </div>
-        </div>
-        <select 
-          className="w-full bg-zinc-900 border border-zinc-800 p-4 rounded-xl text-sm font-black text-white focus:outline-none focus:border-red-600 transition-all appearance-none cursor-pointer"
-          value={property.managerId || ''}
-          onChange={async (e) => {
-            const managerId = e.target.value || null;
-            const updatedProperties = builtProperties.map(p => p.id === property.id ? { ...p, managerId } : p);
-            
-            // Update family member's managedPropertyId
-            const updatedWives = profile!.family!.wives.map(wife => {
-              let newWife = { ...wife };
-              if (wife.id === managerId) {
-                newWife.managedPropertyId = property.id;
-              } else if (wife.managedPropertyId === property.id && wife.id !== managerId) {
-                newWife.managedPropertyId = undefined;
-              }
-              
-              newWife.children = wife.children.map(child => {
-                if (child.id === managerId) {
-                  return { ...child, managedPropertyId: property.id };
-                }
-                if (child.managedPropertyId === property.id && child.id !== managerId) {
-                  return { ...child, managedPropertyId: undefined };
-                }
-                return child;
-              });
-              return newWife;
-            });
-
-            await updateDoc(doc(db, 'users', profile!.uid), { 
-              builtProperties: updatedProperties,
-              'family.wives': updatedWives
-            });
-            toast.success('تم تعيين المدير بنجاح!');
-          }}
-        >
-          <option value="">بدون مدير (إدارة يدوية)</option>
-          {familyMembers.map(m => (
-            <option key={m.id} value={m.id}>{m.name} ({m.type === 'wife' ? 'زوجة' : m.gender === 'boy' ? 'ابن' : 'ابنة'})</option>
-          ))}
-        </select>
-        {property.managerId && (
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="mt-4 flex items-center gap-3 text-[10px] font-black text-emerald-500 bg-emerald-500/5 p-3 rounded-xl border border-emerald-500/20"
-          >
-            <CheckCircle className="w-4 h-4" />
-            <span className="uppercase tracking-widest">المنشأة تحت إدارة احترافية (كفاءة 150%)</span>
-          </motion.div>
-        )}
-        {property.activityLog && property.activityLog.length > 0 && (
-          <div className="mt-6 pt-6 border-t border-zinc-800/50">
-            <p className="text-[10px] font-black text-zinc-600 uppercase tracking-widest mb-3 flex items-center gap-2">
-              <Zap className="w-3 h-3" />
-              {t('properties.activityLog')}
-            </p>
-            <ul className="text-[10px] font-bold text-zinc-400 space-y-2">
-              {property.activityLog.slice(-3).map((log, i) => (
-                <li key={i} className="flex items-start gap-2">
-                  <span className="text-red-600">•</span>
-                  {log}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </div>
-    );
-
-    const upgradeItem = (label: string, key: string, baseCost: number, maxLevel?: number) => {
-      const level = property.upgrades?.[key] || 0;
-      const isMaxed = maxLevel !== undefined && level >= maxLevel;
-      const cost = baseCost * (level + 1);
+  const renderFacilityManagement = (property: BuiltProperty) => {
+    const upgradeItem = (name: string, key: string, cost: number) => {
+      const currentLevel = property.upgrades?.[key] || 0;
       return (
-        <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-all">
+        <div key={key} className="flex items-center justify-between p-3.5 bg-black/40 rounded-xl border border-white/5">
           <div>
-            <p className="text-xs font-black text-white uppercase tracking-tighter italic">{label}</p>
-            <p className="text-[10px] text-zinc-500 font-bold mt-0.5">{isMaxed ? 'أقصى مستوى' : t('properties.level', { level })}</p>
+            <p className="font-bold text-white text-xs">{name}</p>
+            <p className="text-[10px] text-zinc-500">المستوى الحالي: {currentLevel}</p>
           </div>
-          <button 
+          <button
             onClick={() => handleUpgrade(property, key, cost)}
-            disabled={isMaxed || profile!.cleanMoney < cost}
-            className={`px-4 py-2 text-[10px] rounded-xl font-black transition-all uppercase tracking-widest ${
-              isMaxed 
-                ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed' 
-                : 'bg-zinc-800 hover:bg-red-600 text-zinc-400 hover:text-white border border-zinc-700 hover:border-red-500'
-            }`}
+            className="px-3.5 py-1.5 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white rounded-lg text-xs font-black border border-red-500/30 transition-all flex items-center gap-1.5"
           >
-            {isMaxed ? 'MAX' : formatMoney(cost)}
+            <TrendingUp size={13} />
+            <span>ترقية ({formatMoney(cost)})</span>
           </button>
         </div>
       );
     };
 
-    const upgradeLevelButton = (
-      <div className="flex items-center justify-between p-5 bg-red-600/5 rounded-2xl border border-red-600/20 mb-6 group">
-        <div>
-          <p className="text-sm font-black text-red-500 uppercase tracking-tighter italic">{t('properties.upgradeLevel')}</p>
-          <p className="text-[10px] text-red-500/60 font-bold">{t('properties.level', { level: property.level })}</p>
+    return (
+      <div className="mt-6 pt-6 border-t border-white/5 space-y-4 text-xs">
+        {/* أزرار التحصيل والترقية والبيع */}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            onClick={() => handleCollectFacilityProfits(property)}
+            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center gap-2 shadow"
+          >
+            <Coins size={14} />
+            تحصيل الأرباح التكتيكية
+          </button>
+
+          <button
+            onClick={() => handleUpgradeLevel(property)}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold flex items-center gap-2 shadow"
+          >
+            <TrendingUp size={14} />
+            ترقية المنشأة للمستوى {property.level + 1} ({formatMoney(500000 * property.level)})
+          </button>
+
+          <button
+            onClick={() => handleSell(property)}
+            className="px-4 py-2 bg-zinc-800 hover:bg-red-900 text-zinc-400 hover:text-red-200 rounded-xl font-bold flex items-center gap-2 ms-auto transition-colors"
+          >
+            <Skull size={14} />
+            بيع المنشأة
+          </button>
         </div>
-        <button 
-          onClick={() => handleUpgradeLevel(property)}
-          disabled={profile!.cleanMoney < 500000 * property.level}
-          className="px-6 py-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 text-white text-xs rounded-xl font-black uppercase tracking-widest transition-all shadow-lg shadow-red-600/20 border-b-4 border-red-800"
-        >
-          {formatMoney(500000 * property.level)}
-        </button>
+
+        {/* أدوات محددة لكل نوع منشأة */}
+        {property.type === 'laundromat' && (
+          <div className="p-4 bg-teal-500/10 border border-teal-500/20 rounded-2xl flex items-center justify-between">
+            <div>
+              <h5 className="font-bold text-teal-300">غسيل الأموال القذرة</h5>
+              <p className="text-[10px] text-zinc-400">تحويل الأموال المشبوهة لكاش نظامي نظيف بنسبة خصم مخفضة</p>
+            </div>
+            <button
+              onClick={() => handleLaunder(property)}
+              className="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl font-black transition-all flex items-center gap-2 shadow"
+            >
+              <RefreshCw size={14} />
+              بدء دورة الغسيل
+            </button>
+          </div>
+        )}
+
+        {property.type === 'safe_house' && (
+          <div className="p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-center justify-between">
+            <div>
+              <h5 className="font-bold text-blue-300">المخبأ الآمن السري</h5>
+              <p className="text-[10px] text-zinc-400">يحميك من الاغتيال والغارات الأمنية أثناء الملاحقات</p>
+            </div>
+            <button
+              onClick={handleToggleSafeHouse}
+              className={`px-4 py-2 rounded-xl font-black text-white transition-all flex items-center gap-2 ${
+                profile?.inSafeHouse ? 'bg-red-600 hover:bg-red-500' : 'bg-emerald-600 hover:bg-emerald-500'
+              }`}
+            >
+              <Home size={14} />
+              {profile?.inSafeHouse ? 'الخروج من المخبأ' : 'الدخول للمخبأ والتخفي'}
+            </button>
+          </div>
+        )}
+
+        {/* الترقيات الداخلية */}
+        <div className="space-y-2 mt-2">
+          {property.type === 'laundromat' && upgradeItem('غسالات أموال صناعية فائقة', 'washers', 150000)}
+          {property.type === 'drug_factory' && (
+            <>
+              {upgradeItem('معدات تقطير متطورة', 'distillation', 250000)}
+              <div className="flex items-center justify-between p-3.5 bg-black/40 rounded-xl border border-white/5">
+                <div>
+                  <p className="font-bold text-white text-xs">توظيف عمال وخبراء كيمياء</p>
+                  <p className="text-[10px] text-zinc-500">العمال الحاليون: {property.workers || 0}</p>
+                </div>
+                <button
+                  onClick={() => handleHireWorker(property, 50000)}
+                  className="px-3.5 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg text-xs font-bold border border-zinc-700 transition-all"
+                >
+                  توظيف عامل (+20$/د)
+                </button>
+              </div>
+            </>
+          )}
+          {property.type === 'weapon_stash' && upgradeItem('منظومة تخزين تحت الأرض', 'vault', 300000)}
+          {property.type === 'casino' && upgradeItem('صالة VIP لكبار الشخصيات', 'vip_lounge', 500000)}
+          {property.type === 'bank' && upgradeItem('خزائن حديدية مصفحة', 'steel_vault', 1000000)}
+        </div>
       </div>
     );
-
-    const sellButton = (
-      <button 
-        onClick={() => handleSell(property)}
-        className="w-full py-4 mt-8 bg-zinc-900 text-zinc-500 hover:bg-red-950/50 hover:text-red-500 rounded-2xl transition-all border border-zinc-800 hover:border-red-900/50 font-black uppercase tracking-widest text-[10px]"
-      >
-        {t('properties.sell')}
-      </button>
-    );
-
-    switch (property.type) {
-      case 'headquarters':
-        const hqLastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || currentTime);
-        const hqMinutesPassed = Math.floor((currentTime - hqLastCollection) / (1000 * 60));
-        const hqMinuteProfit = calculateMinuteProfit(property);
-        const hqProfit = hqMinuteProfit * hqMinutesPassed;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 flex flex-col items-center text-center group">
-                <div className="p-3 bg-emerald-500/10 rounded-xl mb-3 group-hover:scale-110 transition-transform">
-                  <TrendingUp className="w-6 h-6 text-emerald-500" />
-                </div>
-                <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.pendingProfit')}</p>
-                <p className="text-2xl font-black text-emerald-500">{formatMoney(Math.floor(hqProfit))}</p>
-                <button
-                  onClick={() => handleCollectProfits(property)}
-                  disabled={hqMinutesPassed < 1}
-                  className="mt-4 w-full py-3 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg shadow-emerald-600/20"
-                >
-                  {t('properties.collect')}
-                </button>
-              </div>
-
-              <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 flex flex-col items-center text-center group">
-                <div className="p-3 bg-red-600/10 rounded-xl mb-3 group-hover:scale-110 transition-transform">
-                  <Users className="w-6 h-6 text-red-500" />
-                </div>
-                <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.headquarters.donateToGang')}</p>
-                <p className="text-2xl font-black text-white">{formatMoney(Math.floor(hqProfit))}</p>
-                <button
-                  onClick={() => handleDonateProfitsToGang(property)}
-                  disabled={hqMinutesPassed < 1 || !profile.gangId}
-                  className="mt-4 w-full py-3 bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg shadow-red-600/20"
-                >
-                  {t('properties.headquarters.donateToGang')}
-                </button>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <h5 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-2">{t('properties.upgrades.title')}</h5>
-              {upgradeItem(t('properties.hq.security'), 'security', 200000)}
-              {upgradeItem(t('properties.hq.intel'), 'intel', 150000)}
-              {upgradeItem(t('properties.hq.tactical'), 'tactical', 250000)}
-            </div>
-            {sellButton}
-          </div>
-        );
-      case 'laundromat':
-        let laundromatCapacity = ((property.upgrades?.washers || 0) * 10000 + 5000) * (1 + (property.level - 1) * 0.5);
-        if (property.managerId) laundromatCapacity *= 1.5;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-            
-            <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 group">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.laundromat.capacity')}</p>
-                  <p className="text-2xl font-black text-teal-500">{formatMoney(laundromatCapacity)}</p>
-                </div>
-                <div className="p-3 bg-teal-500/10 rounded-xl group-hover:rotate-12 transition-transform">
-                  <RefreshCw className="w-6 h-6 text-teal-500" />
-                </div>
-              </div>
-              <button 
-                onClick={() => handleLaunder(property)}
-                disabled={profile.dirtyMoney < 1000}
-                className="w-full py-4 bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-teal-600/20 border-b-4 border-teal-800"
-              >
-                {t('properties.laundromat.washBtn', { amount: formatNumber(laundromatCapacity) })}
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {upgradeItem(t('properties.laundromat.washers'), 'washers', 50000)}
-              {upgradeItem(t('properties.laundromat.accounting'), 'accounting', 75000)}
-            </div>
-            {sellButton}
-          </div>
-        );
-      case 'drug_factory':
-        const drugLastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || currentTime);
-        const drugMinutesPassed = Math.floor((currentTime - drugLastCollection) / (1000 * 60));
-        const drugMinuteProfit = calculateMinuteProfit(property);
-        const drugProfit = drugMinuteProfit * drugMinutesPassed;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-            
-            <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 group">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.pendingProfit')}</p>
-                  <p className="text-2xl font-black text-emerald-500">{formatMoney(Math.floor(drugProfit))}</p>
-                </div>
-                <div className="p-3 bg-emerald-500/10 rounded-xl group-hover:scale-110 transition-transform">
-                  <Beaker className="w-6 h-6 text-emerald-500" />
-                </div>
-              </div>
-              <button
-                onClick={() => handleCollectProfits(property)}
-                disabled={drugMinutesPassed < 1}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-emerald-600/20 border-b-4 border-emerald-800"
-              >
-                {t('properties.collect')}
-              </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 text-center">
-                <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.drugs.chemists')}</p>
-                <p className="text-xl font-black text-white">{property.workers || 0}</p>
-              </div>
-              <div className="bg-zinc-900/50 p-4 rounded-2xl border border-zinc-800 text-center">
-                <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.drugs.quality')}</p>
-                <p className="text-xl font-black text-white">Lvl {property.upgrades?.lab_equipment || 0}</p>
-              </div>
-            </div>
-
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-4 bg-zinc-900/50 rounded-2xl border border-zinc-800 hover:border-zinc-700 transition-all">
-                <div>
-                  <p className="text-xs font-black text-white uppercase tracking-tighter italic">{t('properties.drugs.hire')}</p>
-                  <p className="text-[10px] text-zinc-500 font-bold mt-0.5">{t('properties.drugs.chemist_desc')}</p>
-                </div>
-                <button 
-                  onClick={() => handleHireWorker(property, 15000)}
-                  className="px-6 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] rounded-xl font-black uppercase tracking-widest transition-all"
-                >
-                  {formatMoney(15000)}
-                </button>
-              </div>
-              {upgradeItem(t('properties.drugs.lab'), 'lab_equipment', 120000)}
-              {upgradeItem(t('properties.drugs.quality_control'), 'quality_control', 100000)}
-            </div>
-            {sellButton}
-          </div>
-        );
-      case 'weapon_stash':
-        const weaponLastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || currentTime);
-        const weaponMinutesPassed = Math.floor((currentTime - weaponLastCollection) / (1000 * 60));
-        const weaponMinuteProfit = calculateMinuteProfit(property);
-        const weaponProfit = weaponMinuteProfit * weaponMinutesPassed;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-
-            <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 group">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.pendingProfit')}</p>
-                  <p className="text-2xl font-black text-emerald-500">{formatMoney(Math.floor(weaponProfit))}</p>
-                </div>
-                <div className="p-3 bg-orange-500/10 rounded-xl group-hover:scale-110 transition-transform">
-                  <Crosshair className="w-6 h-6 text-orange-500" />
-                </div>
-              </div>
-              <button
-                onClick={() => handleCollectProfits(property)}
-                disabled={weaponMinutesPassed < 1}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-emerald-600/20 border-b-4 border-emerald-800"
-              >
-                {t('properties.collect')}
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {upgradeItem(t('properties.weapons.security'), 'security', 80000)}
-              {upgradeItem(t('properties.weapons.distribution'), 'distribution', 120000)}
-            </div>
-            {sellButton}
-          </div>
-        );
-      case 'ammunition_factory':
-        const ammoLastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || currentTime);
-        const ammoMinutesPassed = Math.floor((currentTime - ammoLastCollection) / (1000 * 60));
-        const ammoMinuteProfit = calculateMinuteProfit(property);
-        const ammoProfit = ammoMinuteProfit * ammoMinutesPassed;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-
-            <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 group">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.pendingProfit')}</p>
-                  <p className="text-2xl font-black text-emerald-500">{formatMoney(Math.floor(ammoProfit))}</p>
-                </div>
-                <div className="p-3 bg-red-500/10 rounded-xl group-hover:scale-110 transition-transform">
-                  <Zap className="w-6 h-6 text-red-500" />
-                </div>
-              </div>
-              <button
-                onClick={() => handleCollectProfits(property)}
-                disabled={ammoMinutesPassed < 1}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-emerald-600/20 border-b-4 border-emerald-800"
-              >
-                {t('properties.collect')}
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {upgradeItem(t('properties.ammunition.production'), 'production_speed', 100000)}
-              {upgradeItem(t('properties.ammunition.variety'), 'variety', 150000)}
-            </div>
-            {sellButton}
-          </div>
-        );
-      case 'garage':
-        const inventoryCars = profile?.inventory?.cars || {};
-        const carNames = Object.keys(inventoryCars).filter(name => inventoryCars[name] > 0);
-        const modifyCost = property.managerId ? 25000 : 50000;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-            
-            <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800">
-              <div className="flex items-center gap-4 mb-6">
-                <div className="p-3 bg-purple-500/10 rounded-xl">
-                  <Wrench className="w-6 h-6 text-purple-500" />
-                </div>
-                <div>
-                  <h4 className="font-black text-white text-sm uppercase tracking-tighter italic">{t('properties.garage.modifyCars')}</h4>
-                  <p className="text-[10px] text-zinc-500 font-bold">تعديل وتصفيح المركبات للعمليات الخاصة</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-zinc-500 px-1">
-                    {t('properties.garage.selectCar')}
-                  </label>
-                  <select 
-                    value={selectedInventoryCar || ''}
-                    onChange={(e) => setSelectedInventoryCar(e.target.value)}
-                    className="w-full bg-zinc-900 border border-zinc-800 rounded-xl px-4 py-4 text-sm font-black text-white focus:outline-none focus:border-purple-600 transition-all appearance-none cursor-pointer"
-                  >
-                    <option value="">{t('properties.garage.chooseCar')}</option>
-                    {carNames.map((carName) => (
-                      <option key={carName} value={carName}>{carName} (x{inventoryCars[carName]})</option>
-                    ))}
-                  </select>
-                </div>
-
-                {selectedInventoryCar && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleModifyCar(property, selectedInventoryCar)}
-                      disabled={profile!.cleanMoney < modifyCost}
-                      className="flex-1 py-4 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg shadow-purple-600/20 border-b-4 border-purple-800"
-                    >
-                      {t('properties.garage.modifyBtn')} ({formatMoney(modifyCost)})
-                    </button>
-                    <button
-                      onClick={() => handleSellInventoryCar(selectedInventoryCar)}
-                      className="px-6 py-4 bg-zinc-800 border border-zinc-700 rounded-xl text-[10px] font-black uppercase tracking-widest text-red-500 hover:bg-red-600 hover:text-white transition-all"
-                    >
-                      {t('common.sell')}
-                    </button>
-                  </div>
-                )}
-
-                {carNames.length === 0 && (
-                  <p className="text-[10px] text-zinc-600 font-black uppercase tracking-widest text-center py-6 bg-black/20 rounded-2xl border border-zinc-800/50 border-dashed">
-                    {t('properties.garage.noCarsInInventory')}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {profile?.vehicles && profile.vehicles.length > 0 && (
-              <div className="space-y-4">
-                <h5 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest px-2">{t('properties.garage.modifiedVehicles')}</h5>
-                <div className="grid grid-cols-1 gap-3">
-                  {profile.vehicles.map(vehicle => {
-                    const upgradeCost = (25000 * (vehicle.armorLevel + 1)) * (property.managerId ? 0.5 : 1);
-                    return (
-                      <div key={vehicle.id} className="bg-black/40 p-4 rounded-2xl border border-zinc-800 flex items-center justify-between group">
-                        <div className="flex items-center gap-4">
-                          <div className="relative">
-                            {vehicle.image ? (
-                              <img src={vehicle.image || undefined} alt={vehicle.name} className="w-16 h-16 object-cover rounded-xl border border-zinc-800" />
-                            ) : (
-                              <div className="w-16 h-16 bg-zinc-900 rounded-xl border border-zinc-800 flex items-center justify-center">
-                                <Car className="text-zinc-700" size={24} />
-                              </div>
-                            )}
-                            <div className="absolute -top-2 -right-2 bg-purple-600 text-white text-[8px] font-black px-1.5 py-0.5 rounded-full border border-black">
-                              MOD
-                            </div>
-                          </div>
-                          <div>
-                            <p className="font-black text-white text-sm uppercase tracking-tighter italic">{vehicle.name}</p>
-                            <div className="flex items-center gap-3 mt-1">
-                              <p className="text-[10px] text-zinc-500 font-bold">{t('properties.garage.armorLevel')}: <span className="text-purple-500">{vehicle.armorLevel}/5</span></p>
-                              <p className="text-[10px] text-zinc-500 font-bold">{t('properties.garage.power')}: <span className="text-blue-500">{vehicle.power} HP</span></p>
-                            </div>
-                          </div>
-                        </div>
-                        <div className="flex flex-col gap-2">
-                          <button
-                            onClick={() => handleUpgradeArmor(property, vehicle.id, vehicle.armorLevel)}
-                            disabled={vehicle.armorLevel >= 5 || profile!.cleanMoney < upgradeCost}
-                            className="px-4 py-2 bg-zinc-800 hover:bg-purple-600 disabled:opacity-50 text-zinc-400 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-zinc-700 hover:border-purple-500"
-                          >
-                            {vehicle.armorLevel >= 5 ? t('properties.garage.maxed') : `${t('properties.garage.upgradeArmor')} (${formatMoney(upgradeCost)})`}
-                          </button>
-                          <button
-                            onClick={() => handleSellModifiedVehicle(vehicle.id)}
-                            className="px-4 py-2 bg-zinc-900/50 hover:bg-red-600 text-red-500/50 hover:text-white rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border border-red-900/20 hover:border-red-500"
-                          >
-                            {t('common.sell')}
-                          </button>
-                        </div>
-                      </div>
-                    )})}
-                </div>
-              </div>
-            )}
-
-            <div className="space-y-3">
-              {upgradeItem(t('properties.garage.tuning'), 'tuning_shop', 100000)}
-              {upgradeItem(t('properties.garage.armor'), 'armor_plating', 150000)}
-            </div>
-
-            {sellButton}
-          </div>
-        );
-      case 'bank':
-        const bankLastCollection = property.lastProfitCollection || (safeToMillis(profile.createdAt) || currentTime);
-        const bankMinutesPassed = Math.floor((currentTime - bankLastCollection) / (1000 * 60));
-        const bankMinuteProfit = calculateMinuteProfit(property);
-        const bankProfit = bankMinuteProfit * bankMinutesPassed;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-            
-            <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 group">
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.pendingProfit')}</p>
-                  <p className="text-2xl font-black text-emerald-500">{formatMoney(Math.floor(bankProfit))}</p>
-                </div>
-                <div className="p-3 bg-yellow-500/10 rounded-xl group-hover:rotate-12 transition-transform">
-                  <Landmark className="w-6 h-6 text-yellow-500" />
-                </div>
-              </div>
-              <button
-                onClick={() => handleCollectProfits(property)}
-                disabled={bankMinutesPassed < 1}
-                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-emerald-600/20 border-b-4 border-emerald-800"
-              >
-                {t('properties.collect')}
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {upgradeItem(t('properties.bank.vault'), 'vault_security', 500000)}
-              {upgradeItem(t('properties.bank.efficiency'), 'laundering_efficiency', 300000)}
-            </div>
-            {sellButton}
-          </div>
-        );
-      case 'safe_house':
-        const isInside = profile?.inSafeHouse;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-            
-            <div className="bg-black/40 p-8 rounded-3xl border border-zinc-800 flex flex-col items-center justify-center gap-6 relative overflow-hidden group">
-              <div className={`absolute inset-0 opacity-5 transition-opacity group-hover:opacity-10 ${isInside ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
-              
-              <div className={`p-5 rounded-2xl border ${isInside ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-                <Shield className="w-10 h-10" />
-              </div>
-
-              <div className="text-center relative z-10">
-                <p className="text-lg font-black text-white uppercase tracking-tighter italic mb-2">
-                  {isInside ? t('properties.safe_house.insideMsg') : t('properties.safe_house.outsideMsg')}
-                </p>
-                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">
-                  {isInside ? 'أنت في منطقة آمنة تماماً' : 'أنت مكشوف للأعداء حالياً'}
-                </p>
-              </div>
-
-              <button
-                onClick={() => handleToggleSafeHouse()}
-                className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all relative z-10 shadow-xl border-b-4 ${
-                  isInside 
-                    ? 'bg-red-600 hover:bg-red-500 text-white shadow-red-600/20 border-red-800' 
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 border-emerald-800'
-                }`}
-              >
-                {isInside ? t('properties.safe_house.exit') : t('properties.safe_house.enter')}
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {upgradeItem(t('properties.safe_house.defense'), 'defense', 100000)}
-              {upgradeItem(t('properties.safe_house.reinforced_doors'), 'reinforced_doors', 150000)}
-            </div>
-            {sellButton}
-          </div>
-        );
-      case 'casino':
-      case 'hotel':
-        const lastCollection = property.lastProfitCollection || (safeToMillis(profile?.createdAt) || currentTime);
-        const minutesPassed = Math.floor((currentTime - lastCollection) / (1000 * 60));
-        const minuteProfit = calculateMinuteProfit(property);
-        const pendingProfits = minuteProfit * minutesPassed;
-
-        return (
-          <div className="mt-8 space-y-6">
-            {managerAssignment}
-            {upgradeLevelButton}
-            
-            <div className="bg-black/40 p-6 rounded-2xl border border-zinc-800 group">
-              <div className="grid grid-cols-2 gap-6 mb-8">
-                <div className="text-center">
-                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.pendingProfit')}</p>
-                  <p className="text-2xl font-black text-emerald-500">{formatMoney(Math.floor(pendingProfits))}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest mb-1">{t('properties.profitPerMinute')}</p>
-                  <p className="text-2xl font-black text-white">{formatMoney(minuteProfit)}</p>
-                </div>
-              </div>
-              
-              <button 
-                onClick={() => handleCollectProfits(property)}
-                disabled={minutesPassed < 1}
-                className={`w-full py-5 rounded-2xl font-black uppercase tracking-widest text-xs transition-all shadow-xl border-b-4 ${
-                  minutesPassed < 1 
-                    ? 'bg-zinc-800 text-zinc-600 border-zinc-900 cursor-not-allowed' 
-                    : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 border-emerald-800'
-                }`}
-              >
-                {t('properties.collectProfits')}
-              </button>
-            </div>
-
-            <div className="space-y-3">
-              {property.type === 'casino' 
-                ? upgradeItem(t('properties.casino.security'), 'security', 200000)
-                : upgradeItem(t('properties.hotel.luxury'), 'luxury', 300000)
-              }
-            </div>
-            {sellButton}
-          </div>
-        );
-      default:
-        return null;
-    }
   };
 
   return (
-    <div className="relative min-h-screen pb-20">
-      {/* Mafia Background Overlay */}
-      <div className="fixed inset-0 pointer-events-none z-0">
-        <div className="absolute inset-0 bg-[url('https://picsum.photos/seed/mafia_city/1920/1080?blur=10')] bg-cover bg-center opacity-20 grayscale"></div>
-        <div className="absolute inset-0 bg-gradient-to-b from-black via-zinc-950 to-black"></div>
+    <div className="min-h-screen text-white pb-20 select-none">
+      {/* Top Breadcrumb & Executive Financial Header */}
+      <div className="bg-gradient-to-b from-zinc-900/90 to-zinc-950 border-b border-zinc-800/80 px-4 md:px-8 py-6 mb-8 backdrop-blur-xl sticky top-0 z-30 shadow-2xl">
+        <div className="max-w-7xl mx-auto space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 text-xs text-zinc-400 font-bold mb-1">
+                <span className="text-red-500 font-black">المالية</span>
+                <ChevronRight size={14} className="rtl:rotate-180 text-zinc-600" />
+                <span className="text-white">المباني وعقارات النفوذ الإقليمي</span>
+              </div>
+              <h1 className="text-2xl md:text-3xl font-black tracking-tight text-white flex items-center gap-3">
+                <Building2 className="text-amber-400 w-8 h-8 drop-shadow-[0_0_12px_rgba(251,191,36,0.5)]" />
+                المباني والسيطرة الإقليمية
+              </h1>
+            </div>
+
+            {/* Quick Actions & Unified Metrics */}
+            <div className="flex flex-wrap items-center gap-3">
+              <Link
+                to="/map"
+                className="px-4 py-2.5 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-xl text-xs font-bold transition-all flex items-center gap-2 shadow"
+              >
+                <MapPin size={16} className="text-red-400" />
+                فتح الخريطة التفاعلية
+                <ExternalLink size={12} className="text-zinc-500" />
+              </Link>
+
+              {totalMapAccumulatedRent > 0 && (
+                <button
+                  onClick={handleCollectAllMapRents}
+                  disabled={processing}
+                  className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-lg shadow-emerald-900/30 animate-pulse"
+                >
+                  <Coins size={16} />
+                  تحصيل كافة عوائد الخريطة ({formatMoney(totalMapAccumulatedRent)})
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Quick Stats Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 text-xs">
+            <div className="p-3 bg-black/40 rounded-xl border border-zinc-800">
+              <span className="text-[10px] text-zinc-500 font-bold block mb-0.5">عقارات الخريطة والنفوذ</span>
+              <span className="text-sm md:text-base font-black text-amber-400 flex items-center gap-1.5">
+                <Building2 size={14} />
+                {myMapControlledBuildings.length} عقار تحت السيطرة
+              </span>
+            </div>
+
+            <div className="p-3 bg-black/40 rounded-xl border border-zinc-800">
+              <span className="text-[10px] text-zinc-500 font-bold block mb-0.5">العائد اليومي لعقارات الخريطة</span>
+              <span className="text-sm md:text-base font-black text-emerald-400 flex items-center gap-1.5">
+                <TrendingUp size={14} />
+                {formatMoney(totalMapDailyRevenue)} / يوم
+              </span>
+            </div>
+
+            <div className="p-3 bg-black/40 rounded-xl border border-zinc-800">
+              <span className="text-[10px] text-zinc-500 font-bold block mb-0.5">المنشآت والمصانع التكتيكية</span>
+              <span className="text-sm md:text-base font-black text-blue-400 flex items-center gap-1.5">
+                <Shield size={14} />
+                {cityProperties.length} منشأة خاصة
+              </span>
+            </div>
+
+            <div className="p-3 bg-black/40 rounded-xl border border-zinc-800">
+              <span className="text-[10px] text-zinc-500 font-bold block mb-0.5">معدل نفوذ المدينة العام</span>
+              <span className="text-sm md:text-base font-black text-purple-400 flex items-center gap-1.5">
+                <Crown size={14} />
+                {overallInfluenceScore}% نفوذ إقليمي
+              </span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div className="relative z-10 space-y-8">
-        <motion.div 
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col md:flex-row md:items-center justify-between gap-6"
-        >
-          <div className="flex items-center gap-5">
-            <div className="p-4 bg-red-600/20 rounded-2xl border border-red-500/30 shadow-lg shadow-red-500/10">
-              <Building2 className="w-10 h-10 text-red-500" />
-            </div>
-            <div>
-              <h1 className="text-4xl font-black text-white tracking-tighter uppercase italic">
-                {t('properties.title')}
-              </h1>
-              <p className="text-zinc-400 font-medium flex items-center gap-2">
-                <Target className="w-4 h-4 text-red-500" />
-                {t('properties.desc')}
-              </p>
-            </div>
-          </div>
+      <div className="max-w-7xl mx-auto px-4 md:px-8 space-y-6">
+        {/* Main Tab Navigation */}
+        <div className="flex border-b border-zinc-800 gap-2 pb-2 overflow-x-auto text-xs font-black">
+          <button
+            onClick={() => setActiveMainTab('map_turf')}
+            className={`px-5 py-3 rounded-xl transition-all flex items-center gap-2.5 whitespace-nowrap ${
+              activeMainTab === 'map_turf'
+                ? 'bg-amber-500/15 text-amber-400 border border-amber-500/40 shadow-[0_0_15px_rgba(245,158,11,0.2)]'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-900 border border-transparent'
+            }`}
+          >
+            <MapPin size={16} />
+            <span>عقارات الخريطة والنفوذ الإقليمي</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-amber-500/20 text-amber-300">
+              {myMapControlledBuildings.length}
+            </span>
+          </button>
 
-          <div className="flex items-center gap-4 bg-zinc-900/80 backdrop-blur-md p-2 rounded-2xl border border-zinc-800">
-            <TrendingUp className="w-5 h-5 text-emerald-500 ml-2" />
-            <div className="text-right">
-              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest leading-none mb-1">إجمالي الدخل الساعي</p>
-              <p className="text-xl font-black text-emerald-500 leading-none">
-                {formatMoney(builtProperties.reduce((acc, p) => acc + calculateMinuteProfit(p) * 60, 0))}
-              </p>
-            </div>
-          </div>
-        </motion.div>
+          <button
+            onClick={() => setActiveMainTab('facilities')}
+            className={`px-5 py-3 rounded-xl transition-all flex items-center gap-2.5 whitespace-nowrap ${
+              activeMainTab === 'facilities'
+                ? 'bg-red-600/15 text-red-400 border border-red-500/40 shadow-[0_0_15px_rgba(239,68,68,0.2)]'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-900 border border-transparent'
+            }`}
+          >
+            <Shield size={16} />
+            <span>المنشآت والمصانع التكتيكية</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] bg-red-500/20 text-red-300">
+              {cityProperties.length}
+            </span>
+          </button>
 
-        <div className="flex gap-2 overflow-x-auto pb-4 scrollbar-hide">
-          {CITIES.map((city, idx) => (
-            <motion.button
-              key={city}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: idx * 0.05 }}
-              onClick={() => setSelectedCity(city)}
-              className={`px-8 py-4 rounded-2xl font-black whitespace-nowrap transition-all uppercase tracking-tighter text-sm ${
-                selectedCity === city 
-                  ? 'bg-red-600 text-white shadow-xl shadow-red-600/20 border-b-4 border-red-800' 
-                  : 'bg-zinc-900/50 text-zinc-500 hover:bg-zinc-800 hover:text-white border border-zinc-800'
-              }`}
-            >
-              {t(`map.cities.${city}`)}
-            </motion.button>
-          ))}
+          <button
+            onClick={() => setActiveMainTab('gang_influence')}
+            className={`px-5 py-3 rounded-xl transition-all flex items-center gap-2.5 whitespace-nowrap ${
+              activeMainTab === 'gang_influence'
+                ? 'bg-purple-600/15 text-purple-400 border border-purple-500/40 shadow-[0_0_15px_rgba(168,85,247,0.2)]'
+                : 'text-zinc-400 hover:text-white hover:bg-zinc-900 border border-transparent'
+            }`}
+          >
+            <Crown size={16} />
+            <span>نفوذ العصابة وهيمنة المقاطعات</span>
+            {profile?.gangName && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] bg-purple-500/20 text-purple-300 truncate max-w-[120px]">
+                {profile.gangName}
+              </span>
+            )}
+          </button>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          <AnimatePresence mode="popLayout">
-            {ownedTilesInCity.length === 0 ? (
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.95 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className="col-span-full p-12 bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 rounded-3xl text-center border-dashed"
-              >
-                <AlertTriangle className="w-12 h-12 text-zinc-700 mx-auto mb-4" />
-                <p className="text-zinc-500 font-bold text-lg">{t('properties.noProperties')}</p>
-              </motion.div>
-            ) : (
-              ownedTilesInCity.map((tileId, idx) => {
-                const builtProp = cityProperties.find(p => p.tileId === tileId);
-                const isBuilt = !!builtProp;
-                const isExpanded = expandedProperty === builtProp?.id;
-                const isBuilding = buildingOnTile === tileId;
+        {/* TAB 1: MAP PROPERTIES & TURF INFLUENCE */}
+        {activeMainTab === 'map_turf' && (
+          <div className="space-y-6">
+            {/* District Control Radar Cards */}
+            <div className="bg-gradient-to-b from-zinc-900/60 to-zinc-950 p-5 rounded-2xl border border-zinc-800 space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Target size={18} className="text-amber-400" />
+                    خريطة النفوذ والسيطرة بالمقاطعات (6 مقاطعات رئيسية)
+                  </h3>
+                  <p className="text-[11px] text-zinc-400 mt-0.5">
+                    كل عقار تستثمر به أو تستأجره يعزز هيمنة عائلتك وعصابتك ويمنحك تدفقات نقدية وحماية مستمرة.
+                  </p>
+                </div>
 
-                if (isBuilt && builtProp) {
-                  const propType = PROPERTY_TYPES.find(pt => pt.id === builtProp.type)!;
-                  return (
-                    <motion.div 
-                      key={`tile-${tileId}`}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: idx * 0.1 }}
-                      className={`group bg-zinc-900/80 backdrop-blur-md border ${propType.border} rounded-3xl p-8 transition-all hover:shadow-2xl ${propType.glow} relative overflow-hidden`}
+                <Link
+                  to="/map"
+                  className="px-3.5 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5"
+                >
+                  <MapPin size={13} />
+                  <span>معاينة جوية 3/4</span>
+                </Link>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                {districtInfluenceStats.map((d) => (
+                  <div key={d.id} className="p-3.5 bg-black/40 rounded-xl border border-white/5 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-white flex items-center gap-1.5 text-xs">
+                        <span>{d.icon}</span>
+                        <span>{d.name}</span>
+                      </span>
+                      <span className="font-mono font-black text-amber-400">{d.influencePct}%</span>
+                    </div>
+
+                    {/* Progress Bar */}
+                    <div className="w-full bg-zinc-800 h-2 rounded-full overflow-hidden">
+                      <div
+                        className="bg-gradient-to-r from-amber-500 to-emerald-500 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${Math.max(4, d.influencePct)}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-zinc-400">
+                      <span>{d.status}</span>
+                      <span>{d.myControlled} من {d.total} عقار</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Sub Filter: My Turf vs Map Market */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-2 bg-black/50 p-1 rounded-xl border border-zinc-800 text-xs">
+                <button
+                  onClick={() => setMapTurfFilter('my_turf')}
+                  className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${
+                    mapTurfFilter === 'my_turf' ? 'bg-amber-600 text-white shadow' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <Building2 size={14} />
+                  عقاراتي المستثمرة ({myMapControlledBuildings.length})
+                </button>
+                <button
+                  onClick={() => setMapTurfFilter('market')}
+                  className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center gap-2 ${
+                    mapTurfFilter === 'market' ? 'bg-blue-600 text-white shadow' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  <DollarSign size={14} />
+                  سوق عقارات المدينة (متاح للشراء والإيجار)
+                </button>
+              </div>
+
+              {/* District Filter Selector */}
+              <div className="flex items-center gap-2 text-xs">
+                <span className="text-zinc-500 font-bold">المقاطعة:</span>
+                <select
+                  value={selectedDistrictFilter}
+                  onChange={(e) => setSelectedDistrictFilter(e.target.value)}
+                  className="bg-zinc-900 border border-zinc-700 text-white rounded-lg px-3 py-1.5 focus:outline-none focus:border-amber-500 text-xs"
+                >
+                  <option value="all">كافة المقاطعات</option>
+                  {DISTRICTS_INFO.map(d => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Content for My Controlled Turf */}
+            {mapTurfFilter === 'my_turf' && (
+              <div>
+                {myMapControlledBuildings.length === 0 ? (
+                  <div className="p-12 text-center bg-black/30 rounded-3xl border border-dashed border-zinc-800 space-y-4">
+                    <Building2 className="w-12 h-12 text-zinc-700 mx-auto" />
+                    <div>
+                      <h4 className="text-lg font-black text-white">لا تملك أي عقارات بالخريطة حتى الآن</h4>
+                      <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1">
+                        تصفح سوق عقارات المدينة أو افتح الخريطة التفاعلية لشراء الأبراج والمصارف والمصانع وفرض نفوذك الإقليمي!
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setMapTurfFilter('market')}
+                      className="px-6 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-black transition-all shadow"
                     >
-                      {/* Decorative Background Icon */}
-                      <propType.icon className="absolute -right-8 -bottom-8 w-48 h-48 text-white/5 rotate-12 pointer-events-none" />
+                      استعراض سوق العقارات للشراء الآن
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {myMapControlledBuildings
+                      .filter(b => selectedDistrictFilter === 'all' || b.district === selectedDistrictFilter)
+                      .map((bld) => {
+                        const isOwner = bld.ownerType === 'player' && bld.ownerId === profile?.uid;
+                        const hasGang = !!bld.gangName;
+                        const security = bld.securityLevel || 1;
 
-                      <div className="relative z-10 flex items-start justify-between">
-                        <div className="flex items-center gap-6">
-                          <div className={`p-5 rounded-2xl ${propType.bg} ${propType.color} shadow-inner`}>
-                            <propType.icon className="w-8 h-8" />
-                          </div>
-                          <div>
-                            <div className="flex items-center gap-2 mb-1">
-                              <h3 className="text-2xl font-black text-white tracking-tighter uppercase italic">
-                                {t(`properties.types.${propType.id}`)}
-                              </h3>
-                              <div className="px-2 py-0.5 bg-zinc-800 rounded text-[10px] font-black text-zinc-500 uppercase tracking-widest">
-                                {t('properties.level', { level: builtProp.level })}
+                        return (
+                          <div
+                            key={bld.id}
+                            className="bg-gradient-to-b from-zinc-900 to-zinc-950 p-5 rounded-2xl border border-zinc-800 space-y-4 shadow-xl hover:border-amber-500/40 transition-all flex flex-col justify-between"
+                          >
+                            <div className="space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex items-center gap-3">
+                                  <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl border border-amber-500/20">
+                                    <Building2 size={20} />
+                                  </div>
+                                  <div>
+                                    <h4 className="font-black text-white text-sm">{bld.name}</h4>
+                                    <span className="text-[10px] text-zinc-400 block">{bld.district}</span>
+                                  </div>
+                                </div>
+
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-black ${
+                                  isOwner 
+                                    ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' 
+                                    : 'bg-blue-500/20 text-blue-300 border border-blue-500/30'
+                                }`}>
+                                  {isOwner ? '👑 ملكية كاملة' : '🔑 مستأجر رسمي'}
+                                </span>
+                              </div>
+
+                              <p className="text-[11px] text-zinc-400 line-clamp-2">{bld.description}</p>
+
+                              {/* Gang and Security Badges */}
+                              <div className="flex flex-wrap items-center gap-2 text-[10px]">
+                                {hasGang ? (
+                                  <span className="px-2 py-0.5 bg-red-600/20 text-red-300 border border-red-500/30 rounded flex items-center gap-1 font-bold">
+                                    <Flame size={12} className="text-red-400" />
+                                    راية: {bld.gangName}
+                                  </span>
+                                ) : profile?.gangId ? (
+                                  <button
+                                    onClick={() => handleClaimGangTurf(bld)}
+                                    disabled={processing}
+                                    className="px-2 py-0.5 bg-zinc-800 hover:bg-red-600 text-zinc-300 hover:text-white border border-zinc-700 rounded transition-all flex items-center gap-1 font-bold"
+                                  >
+                                    <Crown size={12} />
+                                    تثبيت راية العصابة
+                                  </button>
+                                ) : null}
+
+                                <span className="px-2 py-0.5 bg-zinc-800 text-zinc-300 border border-zinc-700 rounded flex items-center gap-1 font-mono">
+                                  <ShieldCheck size={12} className="text-emerald-400" />
+                                  حماية: {security}/5
+                                </span>
+                              </div>
+
+                              {/* Financial details */}
+                              <div className="grid grid-cols-2 gap-2 p-3 bg-black/40 rounded-xl border border-white/5 text-xs">
+                                <div>
+                                  <span className="text-[10px] text-zinc-500 block">العائد اليومي</span>
+                                  <span className="font-black text-emerald-400 font-mono">{formatMoney(bld.dailyRevenue)}</span>
+                                </div>
+                                <div>
+                                  <span className="text-[10px] text-zinc-500 block">العوائد المتراكمة</span>
+                                  <span className="font-black text-amber-400 font-mono">{formatMoney(bld.accumulatedRent || 0)}</span>
+                                </div>
                               </div>
                             </div>
-                            <p className="text-sm text-zinc-400 font-medium max-w-[280px] leading-relaxed">
-                              {t(`properties.desc_types.${propType.id}`)}
-                            </p>
+
+                            {/* Action Buttons */}
+                            <div className="space-y-2 pt-2 border-t border-white/5">
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleCollectMapRent(bld)}
+                                  disabled={processing || (bld.accumulatedRent || 0) <= 0}
+                                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow"
+                                >
+                                  <Coins size={14} />
+                                  تحصيل العوائد ({formatMoney(bld.accumulatedRent || 0)})
+                                </button>
+
+                                {profile?.gangId && (bld.accumulatedRent || 0) > 0 && (
+                                  <button
+                                    onClick={() => handleDonateRentToGang(bld)}
+                                    disabled={processing}
+                                    className="py-2 px-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-all shadow"
+                                    title="إيداع في خزينة العصابة"
+                                  >
+                                    <Crown size={14} />
+                                  </button>
+                                )}
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2 text-xs">
+                                <button
+                                  onClick={() => handleUpgradeBuildingSecurity(bld)}
+                                  disabled={processing || security >= 5}
+                                  className="text-[11px] text-blue-400 hover:text-blue-300 font-bold transition-colors flex items-center gap-1"
+                                >
+                                  <Lock size={12} />
+                                  {security >= 5 ? 'أقصى حماية' : `ترقية الحماية (${formatMoney(security * 1000000)})`}
+                                </button>
+
+                                <Link
+                                  to="/map"
+                                  className="text-[11px] text-zinc-400 hover:text-white transition-colors flex items-center gap-1"
+                                >
+                                  <span>موقعه بالخريطة</span>
+                                  <ChevronRight size={12} className="rtl:rotate-180" />
+                                </Link>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Content for Map Market */}
+            {mapTurfFilter === 'market' && (
+              <div className="space-y-4">
+                <div className="p-4 bg-zinc-900 border border-blue-500/30 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+                  <div>
+                    <h4 className="font-black text-white text-sm">سوق الاستثمار العقاري والسيطرة الإقليمية</h4>
+                    <p className="text-zinc-400 text-[11px]">
+                      اختر عقاراً حقيقياً لشراء ملكيته بالكامل أو استئجاره لعدة أيام لتأمين تدفقات كاش وتوسيع نفوذك.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-zinc-400 font-bold">مدة الإيجار:</span>
+                    {[1, 3, 7].map(days => (
+                      <button
+                        key={days}
+                        onClick={() => setRentDurationDays(days)}
+                        className={`px-2.5 py-1 rounded-lg font-bold text-xs transition-all ${
+                          rentDurationDays === days ? 'bg-blue-600 text-white' : 'bg-black/40 text-zinc-400 hover:text-white'
+                        }`}
+                      >
+                        {days} أيام
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {cityBuildings
+                    .filter(b => selectedDistrictFilter === 'all' || b.district === selectedDistrictFilter)
+                    .map((bld) => {
+                      const isMine = (bld.ownerType === 'player' && bld.ownerId === profile?.uid) || (bld.isRented && bld.tenantId === profile?.uid);
+                      const isOccupiedByOther = bld.isRented && bld.tenantId !== profile?.uid;
+
+                      return (
+                        <div
+                          key={bld.id}
+                          className="bg-gradient-to-b from-zinc-900 to-zinc-950 p-5 rounded-2xl border border-zinc-800 space-y-4 shadow-xl flex flex-col justify-between"
+                        >
+                          <div className="space-y-2">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h4 className="font-black text-white text-sm">{bld.name}</h4>
+                                <span className="text-[10px] text-zinc-400 block">{bld.district}</span>
+                              </div>
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-zinc-800 text-zinc-300">
+                                {bld.type}
+                              </span>
+                            </div>
+
+                            <p className="text-[11px] text-zinc-400 line-clamp-2">{bld.description}</p>
+
+                            <div className="p-3 bg-black/40 rounded-xl border border-white/5 space-y-1 text-xs">
+                              <div className="flex justify-between">
+                                <span className="text-zinc-500">المالك الحالي:</span>
+                                <span className="text-white font-bold">{isMine ? 'أنت' : bld.ownerName}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-500">سعر الشراء:</span>
+                                <span className="text-emerald-400 font-bold font-mono">{formatMoney(bld.purchasePrice)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-500">الإيجار اليومي:</span>
+                                <span className="text-amber-400 font-bold font-mono">{formatMoney(bld.dailyRent)}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className="text-zinc-500">العائد المقدر:</span>
+                                <span className="text-purple-400 font-bold font-mono">{formatMoney(bld.dailyRevenue)} / يوم</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="space-y-2 pt-2 border-t border-white/5">
+                            {isMine ? (
+                              <div className="p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-center text-xs font-bold text-emerald-400">
+                                العقار تحت سيطرتك ونفوذك الحالي
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  onClick={() => handleRentMapBuilding(bld)}
+                                  disabled={processing || isOccupiedByOther}
+                                  className="flex-1 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow"
+                                >
+                                  <Key size={14} />
+                                  استئجار ({formatMoney(bld.dailyRent * rentDurationDays)})
+                                </button>
+
+                                <button
+                                  onClick={() => handleBuyMapBuilding(bld)}
+                                  disabled={processing}
+                                  className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 shadow"
+                                >
+                                  <Building2 size={14} />
+                                  شراء كامل
+                                </button>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
-                      <div className="relative z-10 mt-8 space-y-4">
-                        <div className="flex items-center justify-between p-4 bg-black/40 rounded-2xl border border-zinc-800/50">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-emerald-500/10 rounded-lg">
-                              <TrendingUp className="w-4 h-4 text-emerald-500" />
+        {/* TAB 2: TACTICAL BUILT PROPERTIES */}
+        {activeMainTab === 'facilities' && (
+          <div className="space-y-6">
+            {/* City Selector for Tactical Facilities */}
+            <div className="flex items-center justify-between gap-4">
+              <div className="flex gap-2 overflow-x-auto pb-1 text-xs">
+                {CITIES.map((city) => (
+                  <button
+                    key={city}
+                    onClick={() => setSelectedCity(city)}
+                    className={`px-4 py-2 rounded-xl font-black whitespace-nowrap transition-all uppercase tracking-tight ${
+                      selectedCity === city
+                        ? 'bg-red-600 text-white shadow-lg shadow-red-900/30'
+                        : 'bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800'
+                    }`}
+                  >
+                    {t(`map.cities.${city}`)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="text-xs text-zinc-400 font-bold hidden sm:block">
+                إجمالي دخل المنشآت: <span className="text-emerald-400 font-mono">{formatMoney(totalFacilitiesHourlyProfit)} / س</span>
+              </div>
+            </div>
+
+            {/* Tactical Built Properties List */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {ownedTilesInCity.length === 0 ? (
+                <div className="col-span-full p-12 bg-black/30 rounded-3xl border border-dashed border-zinc-800 text-center space-y-3">
+                  <AlertTriangle className="w-10 h-10 text-zinc-700 mx-auto" />
+                  <p className="text-zinc-400 font-bold text-sm">{t('properties.noProperties')}</p>
+                </div>
+              ) : (
+                ownedTilesInCity.map((tileId) => {
+                  const builtProp = cityProperties.find(p => p.tileId === tileId);
+                  const isBuilt = !!builtProp;
+                  const isExpanded = expandedProperty === builtProp?.id;
+                  const isBuilding = buildingOnTile === tileId;
+
+                  if (isBuilt && builtProp) {
+                    const propType = PROPERTY_TYPES.find(pt => pt.id === builtProp.type)!;
+                    return (
+                      <div
+                        key={`tile-${tileId}`}
+                        className={`bg-zinc-900/80 backdrop-blur-md border ${propType.border} rounded-2xl p-6 transition-all shadow-xl relative overflow-hidden`}
+                      >
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-center gap-4">
+                            <div className={`p-4 rounded-xl ${propType.bg} ${propType.color}`}>
+                              <propType.icon className="w-6 h-6" />
                             </div>
                             <div>
-                              <p className="text-[10px] text-zinc-500 font-black uppercase tracking-widest">الأرباح الساعية</p>
-                              <p className="text-lg font-black text-emerald-500">{formatMoney(calculateMinuteProfit(builtProp) * 60)}</p>
+                              <div className="flex items-center gap-2">
+                                <h3 className="text-lg font-black text-white">
+                                  {t(`properties.types.${propType.id}`)}
+                                </h3>
+                                <span className="px-2 py-0.5 bg-zinc-800 rounded text-[10px] font-black text-zinc-400">
+                                  مستوى {builtProp.level}
+                                </span>
+                              </div>
+                              <p className="text-xs text-zinc-400 mt-0.5">
+                                {t(`properties.desc_types.${propType.id}`)}
+                              </p>
                             </div>
                           </div>
-                          <button 
-                            onClick={() => toggleManage(builtProp.id)}
-                            className="p-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white rounded-xl transition-all border border-zinc-700"
+
+                          <button
+                            onClick={() => setExpandedProperty(isExpanded ? null : builtProp.id)}
+                            className="p-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl transition-all"
                           >
-                            {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
                           </button>
                         </div>
 
+                        {/* Revenue bar */}
+                        <div className="mt-4 flex items-center justify-between p-3 bg-black/40 rounded-xl border border-white/5 text-xs">
+                          <span className="text-zinc-500 font-bold">الأرباح التقديرية الساعية:</span>
+                          <span className="font-black text-emerald-400 font-mono">
+                            {formatMoney(calculateMinuteProfit(builtProp) * 60)} / س
+                          </span>
+                        </div>
+
+                        {/* Management Panel */}
                         <AnimatePresence>
                           {isExpanded && (
                             <motion.div
@@ -1306,78 +1297,183 @@ export default function Properties() {
                               exit={{ opacity: 0, height: 0 }}
                               className="overflow-hidden"
                             >
-                              {renderManagementUI(builtProp)}
+                              {renderFacilityManagement(builtProp)}
                             </motion.div>
                           )}
                         </AnimatePresence>
                       </div>
-                    </motion.div>
-                  );
-                }
+                    );
+                  }
 
-                return (
-                  <motion.div 
-                    key={`tile-${tileId}`}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: idx * 0.1 }}
-                    className="bg-zinc-900/40 backdrop-blur-sm border border-zinc-800/50 border-dashed rounded-3xl p-8 transition-all hover:bg-zinc-900/60"
-                  >
-                    <div className="flex items-center gap-6 mb-8">
-                      <div className="p-5 rounded-2xl bg-zinc-800/50 text-zinc-600">
-                        <Skull className="w-8 h-8" />
-                      </div>
-                      <div>
-                        <h3 className="text-2xl font-black text-zinc-500 tracking-tighter uppercase italic">
-                          {t('properties.emptyTile', { id: tileId })}
-                        </h3>
-                        <p className="text-sm text-zinc-600 font-medium">أرض خالية تنتظر استثمارك الإجرامي</p>
-                      </div>
-                    </div>
-
-                    {isBuilding ? (
-                      <div className="space-y-3">
-                        <h4 className="text-[10px] font-black text-zinc-500 uppercase tracking-widest mb-4 text-center">
-                          {t('properties.selectToBuild')}
-                        </h4>
-                        <div className="grid grid-cols-1 gap-2">
-                          {PROPERTY_TYPES.map(propType => (
-                            <button 
-                              key={propType.id}
-                              onClick={() => handleBuild(propType, tileId)}
-                              className="group w-full flex items-center justify-between p-4 bg-zinc-900 hover:bg-red-600/10 rounded-2xl transition-all border border-zinc-800 hover:border-red-600/50"
-                            >
-                              <div className="flex items-center gap-4">
-                                <div className={`p-2 rounded-lg ${propType.bg} ${propType.color}`}>
-                                  <propType.icon className="w-5 h-5" />
-                                </div>
-                                <span className="text-white font-black uppercase tracking-tighter italic">{t(`properties.types.${propType.id}`)}</span>
-                              </div>
-                              <span className="text-emerald-500 font-black text-sm">{formatMoney(propType.price)}</span>
-                            </button>
-                          ))}
+                  return (
+                    <div
+                      key={`tile-${tileId}`}
+                      className="bg-black/30 border border-zinc-800/80 border-dashed rounded-2xl p-6 flex flex-col justify-between space-y-4"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="p-3 bg-zinc-800 text-zinc-500 rounded-xl">
+                          <Building2 size={24} />
                         </div>
-                        <button 
-                          onClick={() => setBuildingOnTile(null)}
-                          className="w-full py-4 mt-4 text-zinc-500 font-black uppercase tracking-widest text-[10px] hover:text-white transition-colors"
+                        <div>
+                          <h4 className="font-black text-zinc-300 text-sm">قطعة أرض خالية #{tileId}</h4>
+                          <p className="text-xs text-zinc-500">جاهزة لبناء منشأة استثمارية أو أمنية</p>
+                        </div>
+                      </div>
+
+                      {isBuilding ? (
+                        <div className="space-y-2">
+                          <div className="grid grid-cols-2 gap-2 max-h-56 overflow-y-auto p-1">
+                            {PROPERTY_TYPES.map(pt => (
+                              <button
+                                key={pt.id}
+                                onClick={() => handleBuild(pt, tileId)}
+                                className="p-2.5 bg-zinc-900 hover:bg-red-600/20 border border-zinc-800 hover:border-red-500 rounded-xl flex items-center justify-between text-xs transition-all"
+                              >
+                                <span className="font-bold text-white">{t(`properties.types.${pt.id}`)}</span>
+                                <span className="text-emerald-400 font-mono text-[10px]">{formatMoney(pt.price)}</span>
+                              </button>
+                            ))}
+                          </div>
+                          <button
+                            onClick={() => setBuildingOnTile(null)}
+                            className="w-full py-1.5 text-zinc-500 hover:text-white text-xs font-bold"
+                          >
+                            إلغاء
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setBuildingOnTile(tileId)}
+                          className="w-full py-3 bg-zinc-800 hover:bg-red-600 text-zinc-200 hover:text-white rounded-xl text-xs font-black transition-all shadow"
                         >
-                          {t('common.cancel')}
+                          + تشييد منشأة جديدة على هذه الأرض
                         </button>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* TAB 3: GANG INFLUENCE & TURF ALLIANCE */}
+        {activeMainTab === 'gang_influence' && (
+          <div className="space-y-6">
+            {profile?.gangId ? (
+              <div className="space-y-6">
+                {/* Gang Header Card */}
+                <div className="p-6 bg-gradient-to-r from-purple-900/40 via-zinc-900 to-black rounded-3xl border border-purple-500/30 shadow-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
+                  <div className="flex items-center gap-4">
+                    <div className="p-4 bg-purple-600/20 text-purple-400 rounded-2xl border border-purple-500/40 shadow-inner">
+                      <Crown size={32} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-2xl font-black text-white">{profile.gangName || 'عصابتنا'}</h2>
+                        <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                          تحالف إقليمي
+                        </span>
+                      </div>
+                      <p className="text-xs text-zinc-400 mt-1">
+                        تربط عقاراتك مباشرة بنفوذ العصابة بالمدينة لزيادة رصيد الخزينة والدفاعات ضد العصابات المعادية.
+                      </p>
+                    </div>
+                  </div>
+
+                  <Link
+                    to="/gangs"
+                    className="px-5 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-black transition-all flex items-center gap-2 shadow-lg shadow-purple-900/40"
+                  >
+                    <Users size={16} />
+                    غرفة عمليات العصابة المركزية
+                    <ChevronRight size={14} className="rtl:rotate-180" />
+                  </Link>
+                </div>
+
+                {/* Gang Territory Perks */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+                  <div className="p-5 bg-black/40 rounded-2xl border border-zinc-800 space-y-2">
+                    <div className="flex items-center gap-2 text-emerald-400 font-black">
+                      <Coins size={18} />
+                      <span>تدفق مالي تلقائي</span>
+                    </div>
+                    <p className="text-zinc-400 text-[11px]">
+                      تستطيع تحويل عوائد إيجارات عقاراتك إلى خزينة العصابة لدعم ترقياتها ومشتريات الأسلحة والعتاد.
+                    </p>
+                  </div>
+
+                  <div className="p-5 bg-black/40 rounded-2xl border border-zinc-800 space-y-2">
+                    <div className="flex items-center gap-2 text-blue-400 font-black">
+                      <ShieldCheck size={18} />
+                      <span>حماية إقليمية مشتركة</span>
+                    </div>
+                    <p className="text-zinc-400 text-[11px]">
+                      تثبيت راية العصابة على المباني يمنح دفاعات إضافية لأعضاء العصابة في المقاطعة ويقلل خسائر حروب العصابات.
+                    </p>
+                  </div>
+
+                  <div className="p-5 bg-black/40 rounded-2xl border border-zinc-800 space-y-2">
+                    <div className="flex items-center gap-2 text-amber-400 font-black">
+                      <Zap size={18} />
+                      <span>مضاعفة كفاءة غسيل الأموال</span>
+                    </div>
+                    <p className="text-zinc-400 text-[11px]">
+                      السيطرة على أكثر من 3 مبانٍ في مقاطعة واحدة يخفض عمولة غسيل الأموال القذرة بنسبة 15% لكافة الأعضاء.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Controlled Buildings by Gang */}
+                <div className="bg-zinc-900/60 p-6 rounded-3xl border border-zinc-800 space-y-4">
+                  <h3 className="text-base font-black text-white flex items-center gap-2">
+                    <Flame size={18} className="text-red-500" />
+                    عقارات الخريطة الحاملة لراية العصابة ({cityBuildings.filter(b => b.gangId === profile.gangId).length})
+                  </h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {cityBuildings.filter(b => b.gangId === profile.gangId).length === 0 ? (
+                      <div className="col-span-full py-8 text-center text-zinc-500 text-xs">
+                        لم يتم تثبيت راية العصابة على أي عقار بعد. يمكنك تثبيت الراية من تبويب "عقارات الخريطة والنفوذ"!
                       </div>
                     ) : (
-                      <button 
-                        onClick={() => setBuildingOnTile(tileId)}
-                        className="w-full py-5 bg-zinc-800 hover:bg-red-600 text-zinc-400 hover:text-white rounded-2xl transition-all font-black uppercase tracking-widest text-xs border border-zinc-700 hover:border-red-500 shadow-lg hover:shadow-red-600/20"
-                      >
-                        {t('properties.buildOnTile')}
-                      </button>
+                      cityBuildings
+                        .filter(b => b.gangId === profile.gangId)
+                        .map(bld => (
+                          <div key={bld.id} className="p-4 bg-black/50 rounded-xl border border-purple-500/20 space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-white">{bld.name}</span>
+                              <span className="text-[10px] text-purple-400">{bld.district}</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[11px] text-zinc-400">
+                              <span>المسؤول: {bld.ownerName}</span>
+                              <span className="text-emerald-400 font-mono font-bold">{formatMoney(bld.dailyRevenue)}/يوم</span>
+                            </div>
+                          </div>
+                        ))
                     )}
-                  </motion.div>
-                );
-              })
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div className="p-12 text-center bg-black/40 rounded-3xl border border-dashed border-zinc-800 space-y-4">
+                <Crown className="w-12 h-12 text-zinc-700 mx-auto" />
+                <div>
+                  <h4 className="text-lg font-black text-white">أنت لست منضماً لأي عصابة حالياً</h4>
+                  <p className="text-xs text-zinc-400 max-w-md mx-auto mt-1">
+                    انضم إلى إحدى عصابات المدينة أو أنشئ عصابتك الخاصة لتوحيد العقارات وتوسيع نفوذك المشترك في المقاطعات!
+                  </p>
+                </div>
+                <Link
+                  to="/gangs"
+                  className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-black transition-all shadow inline-block"
+                >
+                  استعراض العصابات المتاحة
+                </Link>
+              </div>
             )}
-          </AnimatePresence>
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

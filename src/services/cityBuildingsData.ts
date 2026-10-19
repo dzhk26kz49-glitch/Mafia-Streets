@@ -514,7 +514,9 @@ export class CityBuildingsEngine {
     buildingId: string, 
     userUid: string, 
     userDisplayName: string, 
-    userMoney: number
+    userMoney: number,
+    gangId?: string,
+    gangName?: string
   ): Promise<{ success: boolean; message: string }> {
     const buildings = await this.fetchBuildings(cityId);
     const bld = buildings.find(b => b.id === buildingId);
@@ -539,8 +541,12 @@ export class CityBuildingsEngine {
           ownerType: 'player' as const,
           ownerName: userDisplayName || 'مستثمر',
           ownerId: userUid || 'unknown',
+          gangId: gangId || copy.gangId || undefined,
+          gangName: gangName || copy.gangName || undefined,
           isRented: false,
-          accumulatedRent: 0
+          accumulatedRent: 0,
+          securityLevel: copy.securityLevel || 1,
+          lastRevenueCollection: Date.now()
         };
       }
       return b;
@@ -557,7 +563,7 @@ export class CityBuildingsEngine {
 
     return {
       success: true,
-      message: `مبروك! تم شراء [${bld.name}] بنجاح ونقل ملكيته بالكامل باسمك في السجل العقاري للمدينة!`
+      message: `مبروك! تم شراء [${bld.name}] بنجاح ونقل ملكيته بالكامل باسمك${gangName ? ` وتحت راية عصابة [${gangName}]` : ''} في السجل العقاري للمدينة!`
     };
   }
 
@@ -568,7 +574,9 @@ export class CityBuildingsEngine {
     userUid: string,
     userDisplayName: string,
     days: number,
-    userMoney: number
+    userMoney: number,
+    gangId?: string,
+    gangName?: string
   ): Promise<{ success: boolean; message: string }> {
     const buildings = await this.fetchBuildings(cityId);
     const bld = buildings.find(b => b.id === buildingId);
@@ -595,8 +603,11 @@ export class CityBuildingsEngine {
           isRented: true,
           tenantName: userDisplayName || 'مستأجر',
           tenantId: userUid || 'unknown',
+          gangId: gangId || b.gangId || undefined,
+          gangName: gangName || b.gangName || undefined,
           rentExpiresAt: expiresAt,
-          accumulatedRent: (b.accumulatedRent || 0) + totalRentCost
+          accumulatedRent: (b.accumulatedRent || 0) + totalRentCost,
+          lastRevenueCollection: Date.now()
         };
       }
       return b;
@@ -621,11 +632,11 @@ export class CityBuildingsEngine {
 
     return {
       success: true,
-      message: `تم توقيع عقد الإيجار بنجاح لـ [${bld.name}] لمدة ${days} أيام! العقار تحت تصرفك الآن وتستفيد من كامل عوائده وحمايته.`
+      message: `تم توقيع عقد الإيجار بنجاح لـ [${bld.name}] لمدة ${days} أيام! العقار تحت تصرفك ونفوذك الآن.`
     };
   }
 
-  // تحصيل عوائد الإيجار المتراكمة للمالك
+  // تحصيل عوائد الإيجار المتراكمة لعقار معين
   public static async collectRent(
     cityId: string,
     buildingId: string,
@@ -635,20 +646,21 @@ export class CityBuildingsEngine {
     const bld = buildings.find(b => b.id === buildingId);
 
     if (!bld) return { success: false, amount: 0, message: 'العقار غير موجود!' };
-    if (bld.ownerId !== userUid) {
-      return { success: false, amount: 0, message: 'أنت لست مالك هذا العقار لتحصيل إيجاره!' };
+    if (bld.ownerId !== userUid && bld.tenantId !== userUid) {
+      return { success: false, amount: 0, message: 'أنت لست مالك أو مستأجر هذا العقار لتحصيل عوائده!' };
     }
 
     const amount = bld.accumulatedRent || 0;
     if (amount <= 0) {
-      return { success: false, amount: 0, message: 'لا توجد أرباح إيجار متراكمة حالياً لتحصيلها!' };
+      return { success: false, amount: 0, message: 'لا توجد أرباح أو عوائد متراكمة حالياً لهذا العقار!' };
     }
 
     const updated = buildings.map(b => {
       if (b.id === buildingId) {
         return {
           ...b,
-          accumulatedRent: 0
+          accumulatedRent: 0,
+          lastRevenueCollection: Date.now()
         };
       }
       return b;
@@ -666,7 +678,191 @@ export class CityBuildingsEngine {
     return {
       success: true,
       amount,
-      message: `عاشت إيدك! تم تحصيل عوائد إيجار قدرها ${amount.toLocaleString()} د.ع وأودعت في محفظتك كاش!`
+      message: `عاشت إيدك! تم تحصيل عوائد قدرها ${amount.toLocaleString()} د.ع وأودعت في محفظتك كاش!`
+    };
+  }
+
+  // تحصيل كافة عوائد عقارات اللاعب في المدينة بضغطة واحدة
+  public static async collectAllPlayerRents(
+    cityId: string,
+    userUid: string
+  ): Promise<{ success: boolean; amount: number; count: number; message: string }> {
+    const buildings = await this.fetchBuildings(cityId);
+    let totalCollected = 0;
+    let count = 0;
+
+    const updated = buildings.map(b => {
+      const isOwner = b.ownerId === userUid;
+      const isTenant = b.isRented && b.tenantId === userUid;
+      if ((isOwner || isTenant) && (b.accumulatedRent || 0) > 0) {
+        totalCollected += b.accumulatedRent;
+        count++;
+        return {
+          ...b,
+          accumulatedRent: 0,
+          lastRevenueCollection: Date.now()
+        };
+      }
+      return b;
+    });
+
+    if (totalCollected <= 0) {
+      return { success: false, amount: 0, count: 0, message: 'لا توجد عوائد متراكمة حالياً في عقاراتك!' };
+    }
+
+    try {
+      await updateDoc(doc(db, 'users', userUid), {
+        cleanMoney: increment(totalCollected)
+      });
+      await setDoc(doc(db, 'city_maps', cityId), { buildings: cleanFirestoreData(updated) }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+
+    return {
+      success: true,
+      amount: totalCollected,
+      count,
+      message: `تم تحصيل أرباح ${count} عقار بإجمالي ${totalCollected.toLocaleString()} د.ع إلى رصيدك بنجاح!`
+    };
+  }
+
+  // إيداع عوائد العقار مباشرة في خزينة العصابة لتعزيز نفوذها
+  public static async donateRentToGang(
+    cityId: string,
+    buildingId: string,
+    userUid: string,
+    gangId: string
+  ): Promise<{ success: boolean; amount: number; message: string }> {
+    const buildings = await this.fetchBuildings(cityId);
+    const bld = buildings.find(b => b.id === buildingId);
+
+    if (!bld) return { success: false, amount: 0, message: 'العقار غير موجود!' };
+    if (bld.ownerId !== userUid && bld.tenantId !== userUid) {
+      return { success: false, amount: 0, message: 'لا تملك صلاحية التصرف في عوائد هذا العقار!' };
+    }
+
+    const amount = bld.accumulatedRent || 0;
+    if (amount <= 0) {
+      return { success: false, amount: 0, message: 'لا توجد عوائد لتحويلها لخزينة العصابة!' };
+    }
+
+    const updated = buildings.map(b => {
+      if (b.id === buildingId) {
+        return {
+          ...b,
+          accumulatedRent: 0,
+          lastRevenueCollection: Date.now()
+        };
+      }
+      return b;
+    });
+
+    try {
+      await updateDoc(doc(db, 'gangs', gangId), {
+        balance: increment(amount)
+      });
+      await setDoc(doc(db, 'city_maps', cityId), { buildings: cleanFirestoreData(updated) }, { merge: true });
+    } catch (err) {
+      console.error(err);
+      return { success: false, amount: 0, message: 'فشل إيداع المبلغ في خزينة العصابة' };
+    }
+
+    return {
+      success: true,
+      amount,
+      message: `تم تحويل ${amount.toLocaleString()} د.ع من عوائد العقار إلى خزينة العصابة لتعزيز الهيمنة والنفوذ!`
+    };
+  }
+
+  // ترقية منظومة الحراسة والأمن للعقار
+  public static async upgradeSecurity(
+    cityId: string,
+    buildingId: string,
+    userUid: string,
+    userMoney: number
+  ): Promise<{ success: boolean; newLevel: number; message: string }> {
+    const buildings = await this.fetchBuildings(cityId);
+    const bld = buildings.find(b => b.id === buildingId);
+
+    if (!bld) return { success: false, newLevel: 0, message: 'العقار غير موجود!' };
+    if (bld.ownerId !== userUid) {
+      return { success: false, newLevel: 0, message: 'أنت لست مالك هذا العقار لترقية أمنه!' };
+    }
+
+    const currentLevel = bld.securityLevel || 1;
+    if (currentLevel >= 5) {
+      return { success: false, newLevel: 5, message: 'منظومة الحماية بلغت أقصى مستوى (5/5)!' };
+    }
+
+    const cost = currentLevel * 1000000;
+    if (userMoney < cost) {
+      return { success: false, newLevel: currentLevel, message: `تكلفة الترقية هي ${cost.toLocaleString()} د.ع ورصيدك لا يكفي!` };
+    }
+
+    const nextLevel = currentLevel + 1;
+    const updated = buildings.map(b => {
+      if (b.id === buildingId) {
+        return {
+          ...b,
+          securityLevel: nextLevel
+        };
+      }
+      return b;
+    });
+
+    try {
+      await updateDoc(doc(db, 'users', userUid), {
+        cleanMoney: increment(-cost)
+      });
+      await setDoc(doc(db, 'city_maps', cityId), { buildings: cleanFirestoreData(updated) }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+
+    return {
+      success: true,
+      newLevel: nextLevel,
+      message: `تمت ترقية منظومة أمن وحراسة [${bld.name}] إلى المستوى (${nextLevel}/5) لحمايته من غارات الخصوم!`
+    };
+  }
+
+  // فرض نفوذ العصابة وتثبيت رايتها على العقار
+  public static async claimGangTurf(
+    cityId: string,
+    buildingId: string,
+    userUid: string,
+    gangId: string,
+    gangName: string
+  ): Promise<{ success: boolean; message: string }> {
+    const buildings = await this.fetchBuildings(cityId);
+    const bld = buildings.find(b => b.id === buildingId);
+
+    if (!bld) return { success: false, message: 'العقار غير موجود!' };
+    if (bld.ownerId !== userUid && bld.tenantId !== userUid) {
+      return { success: false, message: 'أنت لست مالك أو مستأجر هذا العقار لفرض راية العصابة عليه!' };
+    }
+
+    const updated = buildings.map(b => {
+      if (b.id === buildingId) {
+        return {
+          ...b,
+          gangId,
+          gangName
+        };
+      }
+      return b;
+    });
+
+    try {
+      await setDoc(doc(db, 'city_maps', cityId), { buildings: cleanFirestoreData(updated) }, { merge: true });
+    } catch (err) {
+      console.error(err);
+    }
+
+    return {
+      success: true,
+      message: `تم تثبيت راية عصابة [${gangName}] على [${bld.name}] وأصبح معقلاً رسمي لنفوذكم الإقليمي!`
     };
   }
 }

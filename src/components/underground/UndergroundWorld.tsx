@@ -78,7 +78,8 @@ export interface UndergroundWorldProps {
 }
 
 export const UndergroundWorld: React.FC<UndergroundWorldProps> = ({ initialSubTab = 'roster' }) => {
-  const { profile } = useAuthStore();
+  const { profile, overrides } = useAuthStore();
+  const getNpcImage = (c: NPCCharacter | null) => (c ? (overrides?.[c.id]?.image || c.image) : '');
   
   // تبويب الأقسام والأنظمة الكبرى لعالم الخفاء
   const [mainSubTab, setMainSubTab] = useState<'roster' | 'laundering' | 'dispatch' | 'partnerships' | 'pvp' | 'heists' | 'prison' | 'skills'>(initialSubTab);
@@ -965,7 +966,7 @@ export const UndergroundWorld: React.FC<UndergroundWorldProps> = ({ initialSubTa
                           title="انقر لتكبير صورة الشخصية لأكبر حجم 🔍"
                         >
                           <img 
-                            src={npc.image} 
+                            src={getNpcImage(npc)} 
                             alt={npc.name} 
                             className="w-full h-full object-cover group-hover/img:scale-105 transition-transform duration-300"
                           />
@@ -1091,7 +1092,7 @@ export const UndergroundWorld: React.FC<UndergroundWorldProps> = ({ initialSubTa
                               : 'border-zinc-700 hover:border-zinc-400 group-hover:scale-110'
                         }`}>
                           <img 
-                            src={npc.image} 
+                            src={getNpcImage(npc)} 
                             alt={npc.name} 
                             className="w-full h-full object-cover" 
                           />
@@ -1130,7 +1131,7 @@ export const UndergroundWorld: React.FC<UndergroundWorldProps> = ({ initialSubTa
                     title="انقر لتكبير صورة الشخصية لأكبر حجم 🔍"
                   >
                     <div className="w-16 h-20 sm:w-20 sm:h-24 rounded-2xl border-2 border-emerald-500/40 group-hover:border-emerald-400 overflow-hidden shrink-0 shadow-xl transition-all relative">
-                      <img src={selectedNpc.image} alt={selectedNpc.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                      <img src={getNpcImage(selectedNpc)} alt={selectedNpc.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                       <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <ZoomIn size={20} className="text-white drop-shadow-lg" />
                       </div>
@@ -1822,7 +1823,7 @@ export const UndergroundWorld: React.FC<UndergroundWorldProps> = ({ initialSubTa
             <div className="flex items-center justify-between p-4 bg-zinc-900/90 border-b border-zinc-800 shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl overflow-hidden border border-zinc-700 shrink-0">
-                  <img src={enlargedNpc.image} alt={enlargedNpc.name} className="w-full h-full object-cover" />
+                  <img src={getNpcImage(enlargedNpc)} alt={enlargedNpc.name} className="w-full h-full object-cover" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1895,7 +1896,7 @@ export const UndergroundWorld: React.FC<UndergroundWorldProps> = ({ initialSubTa
                 }}
               >
                 <img 
-                  src={enlargedNpc.image} 
+                  src={getNpcImage(enlargedNpc)} 
                   alt={enlargedNpc.name} 
                   className="w-full h-full object-contain select-none"
                 />

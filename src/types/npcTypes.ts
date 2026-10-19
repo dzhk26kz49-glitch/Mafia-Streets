@@ -138,6 +138,10 @@ export interface CityBuilding {
   description: string;
   iconType: string;
   colorScheme: string;
+  gangId?: string;
+  gangName?: string;
+  securityLevel?: number;
+  lastRevenueCollection?: number;
 }
 
 export interface PoliceRaidEvent {
