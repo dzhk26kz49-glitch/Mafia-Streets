@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from 'firebase/firestore';
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, getDoc as originalGetDoc, getDocs as originalGetDocs, DocumentSnapshot, QuerySnapshot, doc, updateDoc, increment } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { toast } from 'sonner';
 
@@ -104,4 +104,48 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
+}
+
+export async function safeGetDoc(docRef: any): Promise<DocumentSnapshot> {
+  try {
+    return await originalGetDoc(docRef);
+  } catch (error: any) {
+    console.warn('safeGetDoc offline fallback:', error?.message);
+    return {
+      exists: () => false,
+      data: () => undefined,
+      id: docRef.id,
+      metadata: { fromCache: true, hasPendingWrites: false }
+    } as unknown as DocumentSnapshot;
+  }
+}
+
+export async function safeGetDocs(queryRef: any): Promise<QuerySnapshot> {
+  try {
+    return await originalGetDocs(queryRef);
+  } catch (error: any) {
+    console.warn('safeGetDocs offline fallback:', error?.message);
+    return {
+      empty: true,
+      docs: [],
+      size: 0,
+      forEach: () => {},
+      metadata: { fromCache: true, hasPendingWrites: false }
+    } as unknown as QuerySnapshot;
+  }
+}
+
+export const getDoc = safeGetDoc;
+export const getDocs = safeGetDocs;
+
+export async function addToStateBudget(amount: number) {
+  if (!amount || amount <= 0) return;
+  try {
+    const govRef = doc(db, 'government', 'current');
+    await updateDoc(govRef, {
+      budget: increment(amount)
+    });
+  } catch (e) {
+    console.warn('Could not add to state budget:', e);
+  }
 }

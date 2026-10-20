@@ -26,7 +26,7 @@ import { formatNumber, formatMoney } from '../lib/utils';
 import { toast } from 'sonner';
 import { useAuthStore } from '../store/useAuthStore';
 import { doc, updateDoc, increment } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType, addToStateBudget } from '../lib/firebase';
 import { PoliceEngine, ContrabandItemResult } from '../services/policeEngine';
 import { soundEngine } from '../services/soundEngine';
 
@@ -94,6 +94,7 @@ export default function Police() {
         });
         toast.error('الضابط أخذ الفلوس وطرّد الواسطة وصاح: "شنو عبالك الداخلية لعبة بيدك ولك؟! وداعت أمي ما تمشي يمي!" وخسرت المليون وما نلغت النجوم!');
       }
+      await addToStateBudget(bribePrice);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
       toast.error('صار خلل بالاتصال بالشبكة الأمنية، حاول مرة ثانية');

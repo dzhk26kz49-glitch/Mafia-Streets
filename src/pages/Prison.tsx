@@ -37,7 +37,7 @@ import {
   limit,
   increment
 } from 'firebase/firestore';
-import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { db, handleFirestoreError, OperationType, addToStateBudget } from '../lib/firebase';
 import { formatMoney, formatNumber, safeToMillis } from '../lib/utils';
 import { getVIPDiscount } from '../lib/vip';
 import { getActiveRolePerks } from '../lib/rolePerks';
@@ -242,6 +242,7 @@ export default function Prison() {
         wantedStars: 0,
         jailTimeEnd: null
       });
+      await addToStateBudget(actualBribeAmount);
       toast.success(`تم دفع الرشوة النظامية بقيمة ${formatMoney(actualBribeAmount)} والخروج من السجن بنجاح!`);
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);
