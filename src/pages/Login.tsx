@@ -209,6 +209,12 @@ export default function Login() {
   // Zoom / Enlarge modal state
   const [zoomedImage, setZoomedImage] = useState<{ name: string; url: string; tag: string } | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [loadingTimedOut, setLoadingTimedOut] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setLoadingTimedOut(true), 2500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (user && !profile && user.displayName && !nickname) {
@@ -312,7 +318,7 @@ export default function Login() {
     return <Navigate to="/" />;
   }
 
-  if (loading) {
+  if (loading && !loadingTimedOut) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4">
         <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mb-4" />

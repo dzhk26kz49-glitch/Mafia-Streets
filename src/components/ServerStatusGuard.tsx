@@ -57,6 +57,13 @@ export default function ServerStatusGuard({ children }: ServerStatusGuardProps) 
       }
     };
 
+    // Auto-ready safety timeout so ServerStatusGuard never blocks the client indefinitely
+    const autoReadyTimer = setTimeout(() => {
+      if (mounted) {
+        setIsReady(true);
+      }
+    }, 1500);
+
     if (!isReady) {
       checkStatus();
     }
@@ -64,6 +71,7 @@ export default function ServerStatusGuard({ children }: ServerStatusGuardProps) 
     return () => { 
       mounted = false; 
       clearTimeout(timeoutId);
+      clearTimeout(autoReadyTimer);
     };
   }, [isReady]); // Empty dependency array to prevent double-calling
 

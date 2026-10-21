@@ -16,19 +16,21 @@ export const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
+const dbId = firebaseConfig.firestoreDatabaseId || '(default)';
+
 let dbInstance: any;
 try {
   dbInstance = initializeFirestore(app, {
     localCache: persistentLocalCache({
       tabManager: persistentMultipleTabManager()
     })
-  });
+  }, dbId);
 } catch (e) {
   try {
-    dbInstance = getFirestore(app);
+    dbInstance = getFirestore(app, dbId);
   } catch (err) {
     console.error('Failed to initialize firestore with cache, falling back:', err);
-    dbInstance = getFirestore(app);
+    dbInstance = getFirestore(app, dbId);
   }
 }
 

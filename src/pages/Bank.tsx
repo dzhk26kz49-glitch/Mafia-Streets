@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { formatDistanceToNow } from 'date-fns';
 import { ar, enUS } from 'date-fns/locale';
 import { soundEngine } from '../services/soundEngine';
+import { UnifiedGameEngine } from '../services/unifiedGameEngine';
 
 const VISA_TIERS: { type: VisaType; price: number; color: string; bg: string; icon: any; benefits: string[] }[] = [
   { 
@@ -160,14 +161,34 @@ export default function Bank() {
 
     setIsProcessing(true);
     try {
-      const newClean = type === 'deposit' ? profile.cleanMoney - val : profile.cleanMoney + val;
-      const newBank = type === 'deposit' ? (profile.bankBalance || 0) + val : (profile.bankBalance || 0) - val;
-
-      await updateDoc(doc(db, 'users', profile.uid), {
-        cleanMoney: newClean,
-        bankBalance: newBank
+      const debitRes = await UnifiedGameEngine.executeFinancialTransaction({
+        uid: profile.uid,
+        type: 'debit',
+        currency: type === 'deposit' ? 'cleanMoney' : 'bankBalance',
+        amount: val,
+        category: 'bank',
+        description: type === 'deposit' ? 'إيداع أموال في البنك المركزي' : 'سحب أموال من البنك المركزي',
+        idempotencyKey: `bank_${type}_${Date.now()}`
       });
-      
+
+      if (!debitRes.success) {
+        toast.error(debitRes.error || t('common.failed'));
+        setIsProcessing(false);
+        return;
+      }
+
+      await UnifiedGameEngine.executeFinancialTransaction({
+        uid: profile.uid,
+        type: 'credit',
+        currency: type === 'deposit' ? 'bankBalance' : 'cleanMoney',
+        amount: val,
+        category: 'bank',
+        description: type === 'deposit' ? 'رصيد بنكي مضاف' : 'أموال نقدية مسحوبة'
+      });
+
+      // Progress trader contracts
+      UnifiedGameEngine.progressRoleContracts(profile.uid, 'bank', 1).catch(console.warn);
+
       soundEngine.playCashSound();
       toast.success(t('common.success'));
       setAmount('');

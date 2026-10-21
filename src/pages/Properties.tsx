@@ -46,6 +46,7 @@ import {
 } from 'lucide-react';
 import { CityBuilding } from '../types/npcTypes';
 import { INITIAL_CITY_BUILDINGS, CityBuildingsEngine } from '../services/cityBuildingsData';
+import { UnifiedGameEngine } from '../services/unifiedGameEngine';
 
 const CITIES = ['baghdad', 'damascus', 'beirut', 'cairo', 'dubai'];
 
@@ -610,6 +611,19 @@ export default function Properties() {
         'familyFinances.income': increment(totalProfit),
         'familyFinances.lastUpdate': now
       });
+
+      // Progress trader contracts across sectors
+      UnifiedGameEngine.progressRoleContracts(profile.uid, 'property', 1).catch(console.warn);
+
+      // Emit game event
+      UnifiedGameEngine.emit({
+        id: `prop_profit_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+        type: 'PROPERTY_PROFIT_COLLECTED',
+        uid: profile.uid,
+        timestamp: now,
+        data: { propertyId: property.id, type: property.type, totalProfit }
+      });
+
       soundEngine.playCashSound();
       toast.success(t('properties.profitsCollected', { amount: formatNumber(totalProfit) }));
     } catch (error) {

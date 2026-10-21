@@ -8,6 +8,7 @@ import { formatNumber, formatMoney, safeToMillis } from '../lib/utils';
 import { getVIPMultiplier, getVIPCooldownReduction } from '../lib/vip';
 import { getActiveRolePerks } from '../lib/rolePerks';
 import { toast } from 'sonner';
+import { UnifiedGameEngine } from '../services/unifiedGameEngine';
 
 // Mock cooldowns (in a real app, store in Firestore)
 const COOLDOWNS: Record<string, number> = {};
@@ -93,6 +94,19 @@ export default function Crimes() {
           reputation: increment(level * 100),
           inventory: newInventory
         });
+
+        // Progress role contracts across the game ecosystem
+        UnifiedGameEngine.progressRoleContracts(profile.uid, 'crime', 1).catch(console.warn);
+
+        // Emit game event for live reactive systems
+        UnifiedGameEngine.emit({
+          id: `crime_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          type: 'CRIME_RESOLVED',
+          uid: profile.uid,
+          timestamp: Date.now(),
+          data: { success: true, reward, type, level, isDoubleLoot }
+        });
+
         const bonusMsg = isDoubleLoot ? ' 💰 (غنيمة مضاعفة: أصابع الظل x2!)' : '';
         toast.success(t('crimes.successMsg', { reward }) + bonusMsg);
       } else {

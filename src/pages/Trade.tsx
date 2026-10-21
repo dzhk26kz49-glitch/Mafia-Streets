@@ -18,6 +18,7 @@ import { BlackMarketService } from '../services/blackMarketService';
 import { CommodityItem } from '../types/blackMarketTypes';
 import { Link } from 'react-router-dom';
 import clsx from 'clsx';
+import { UnifiedGameEngine } from '../services/unifiedGameEngine';
 
 export interface SmugglingGood {
   id: string; // e.g. 'pure_cocaine'
@@ -336,6 +337,7 @@ export default function Trade() {
 
         soundEngine.playBlackMarketDealSound();
         toast.success(`تم استيراد ${qtyToBuy} ${good.unit} من ${country.name} بمبلغ ${formatMoney(totalCost)} كاش قذر! 📦`);
+        UnifiedGameEngine.progressRoleContracts(profile.uid, 'smuggle', 1).catch(console.warn);
       } else {
         // Sell action
         const qtyToSell = action === 'sellAll' ? currentStock : Math.min(currentStock, quantity);
@@ -360,6 +362,7 @@ export default function Trade() {
           : ' (بدون وكيل معتمد)';
 
         toast.success(`تم تصريف ${qtyToSell} ${good.unit} في ${country.name} واستلام ${formatMoney(totalEarned)} كاش قذر${agentNote}! 💰`);
+        UnifiedGameEngine.progressRoleContracts(profile.uid, 'smuggle', 1).catch(console.warn);
       }
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `users/${profile.uid}`);

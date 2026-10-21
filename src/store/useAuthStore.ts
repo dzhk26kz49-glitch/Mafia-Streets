@@ -583,6 +583,14 @@ export const useAuthStore = create<AuthState>((set, get) => {
   let hasSyncedPublicProfile = false;
   let quotaExceededInternal = false;
 
+  // Global safety timeout: prevent infinite loading spinner
+  setTimeout(() => {
+    if (get().loading) {
+      console.warn("Auth initialization safety timeout triggered");
+      set({ loading: false });
+    }
+  }, 3500);
+
   onAuthStateChanged(auth, async (user) => {
     // Handle redirect result to catch any errors from signInWithRedirect
     getRedirectResult(auth).catch((error) => {
@@ -1132,8 +1140,14 @@ export const useAuthStore = create<AuthState>((set, get) => {
           ];
           
           if (user?.email && adminEmails.includes(user.email)) {
-            const founderName = user.email === 'soft4net2016@gmail.com' ? '𝑀𝓊𝓈𝓉𝒶𝒻𝒶' : 'Admin';
-            get().createProfile('Admin', founderName).catch(console.error);
+            const founderName = user.email === 'soft4net2016@gmail.com' ? '𝑀𝓊𝓈𝓉𝒶𝒻𝒶' : (user.displayName || 'Admin');
+            get().createProfile('Admin', founderName)
+              .catch((err) => {
+                console.error("Auto profile creation error:", err);
+              })
+              .finally(() => {
+                set({ loading: false });
+              });
           } else {
             set({ profile: null, loading: false });
           }
@@ -1265,28 +1279,39 @@ export const useAuthStore = create<AuthState>((set, get) => {
         }
       }
       
-      let requestedName = (isAdmin && assignedRole === 'Admin') ? '𝑀𝓊𝓈𝓉𝒶𝒻𝒶' : (nickname.trim() || user.displayName || 'Unknown Player');
+      let requestedName = (isAdmin && assignedRole === 'Admin' && user.email === 'soft4net2016@gmail.com')
+        ? '𝑀𝓊𝓈𝓉𝒶𝒻𝒶'
+        : (nickname.trim() || user.displayName || `Admin_${user.uid.slice(0, 4)}`);
 
       // Check if display name is already taken
-      const nameQuery = query(collection(db, 'users_public'), where('displayName', '==', requestedName));
-      const nameSnapshot = await getDocs(nameQuery);
-      
-      if (!nameSnapshot.empty) {
-        if (isAdmin && requestedName === '𝑀𝓊𝓈𝓉𝒶𝒻𝒶') {
-          requestedName = nickname.trim() || user.displayName || `Admin_${user.uid.slice(0, 4)}`;
-          const fallbackQuery = query(collection(db, 'users_public'), where('displayName', '==', requestedName));
-          const fallbackSnapshot = await getDocs(fallbackQuery);
-          if (!fallbackSnapshot.empty) {
+      try {
+        const nameQuery = query(collection(db, 'users_public'), where('displayName', '==', requestedName));
+        const nameSnapshot = await getDocs(nameQuery);
+        
+        if (!nameSnapshot.empty) {
+          if (isAdmin) {
             requestedName = `${requestedName}_${user.uid.slice(0, 4)}`;
+          } else {
+            throw new Error('هذا الاسم موجود بالفعل');
           }
-        } else {
-          throw new Error('هذا الاسم موجود بالفعل');
         }
+      } catch (err: any) {
+        if (err.message === 'هذا الاسم موجود بالفعل') {
+          throw err;
+        }
+        console.warn("Could not check duplicate name, proceeding:", err);
       }
 
-      const settingsDoc = await getDoc(doc(db, 'server_settings', 'backup'));
-      const settingsData = settingsDoc.data();
-      let startingMoney = settingsData?.startingMoney || 5000000;
+      let startingMoney = 5000000;
+      try {
+        const settingsDoc = await getDoc(doc(db, 'server_settings', 'backup'));
+        const settingsData = settingsDoc.data();
+        if (settingsData?.startingMoney) {
+          startingMoney = settingsData.startingMoney;
+        }
+      } catch (e) {
+        console.warn("Settings backup check skipped:", e);
+      }
       
       // Trader role perk: +1M extra starting cash
       if (assignedRole === 'Trader') {
@@ -1382,8 +1407,29 @@ export const useAuthStore = create<AuthState>((set, get) => {
 
       try {
         await setDoc(doc(db, 'users', user.uid), newProfile);
+        set({ profile: newProfile, loading: false });
       } catch (error) {
         handleFirestoreError(error, OperationType.CREATE, `users/${user.uid}`);
+        set({ profile: newProfile, loading: false });
+      }
+
+      try {
+        await setDoc(doc(db, 'users_public', user.uid), {
+          uid: user.uid,
+          displayName: newProfile.displayName,
+          displayNameLower: newProfile.displayName.toLowerCase(),
+          photoURL: newProfile.photoURL,
+          level: newProfile.level,
+          role: newProfile.role,
+          reputation: newProfile.reputation,
+          city: newProfile.city,
+          health: newProfile.health,
+          wealth: newProfile.cleanMoney + newProfile.dirtyMoney + newProfile.bankBalance,
+          createdAt: serverTimestamp(),
+          lastActive: serverTimestamp()
+        }, { merge: true });
+      } catch (e) {
+        console.warn("Failed to create initial users_public doc:", e);
       }
     },
     setWelcomeMessageSeen: async () => {

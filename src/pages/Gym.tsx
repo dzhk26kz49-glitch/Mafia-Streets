@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { MARKET_ITEMS } from '../lib/items';
 import { formatNumber } from '../lib/utils';
 import { getVIPMultiplier, getVIPDiscount } from '../lib/vip';
+import { UnifiedGameEngine } from '../services/unifiedGameEngine';
 
 const Gym = () => {
   const { t } = useTranslation();
@@ -127,6 +128,7 @@ const Gym = () => {
     // Simulate training animation
     setTimeout(async () => {
       await train(machine.stat, finalCost, machine.energyCost, finalGain);
+      UnifiedGameEngine.progressRoleContracts(profile.uid, 'gym', 1).catch(console.warn);
       setTrainingId(null);
     }, 2000);
   };

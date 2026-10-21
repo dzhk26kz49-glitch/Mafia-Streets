@@ -52,6 +52,15 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   const { user, profile, loading } = useAuthStore();
   const location = useLocation();
   
+  const [showBypass, setShowBypass] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      setShowBypass(true);
+    }, 2500);
+    return () => clearTimeout(timer);
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-black flex items-center justify-center p-4 relative overflow-hidden">
@@ -60,6 +69,16 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
         <div className="relative z-10 flex flex-col items-center">
           <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full animate-spin mb-4"></div>
           <p className="text-red-500 font-bold animate-pulse text-xl">جاري التحميل...</p>
+          {showBypass && (
+            <div className="mt-6 flex flex-col items-center gap-3">
+              <button
+                onClick={() => useAuthStore.setState({ loading: false })}
+                className="px-6 py-2.5 bg-red-600 hover:bg-red-500 text-white font-black text-sm rounded-xl shadow-[0_0_20px_rgba(220,38,38,0.5)] transition-all cursor-pointer"
+              >
+                تجاوز الانتظار والدخول المباشر
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

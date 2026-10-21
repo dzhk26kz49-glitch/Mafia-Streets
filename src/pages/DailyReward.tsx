@@ -10,6 +10,7 @@ import clsx from 'clsx';
 import { formatMoney } from '../lib/utils';
 import { getVIPMultiplier } from '../lib/vip';
 import { motion } from 'motion/react';
+import { UnifiedGameEngine } from '../services/unifiedGameEngine';
 
 const REWARDS = [
   { day: 1, type: 'money', amount: 500, name: '500$', icon: Landmark, color: 'text-green-500' },
@@ -115,6 +116,13 @@ export default function DailyReward() {
 
   const handleClaim = async () => {
     if (!canClaim || claiming) return;
+
+    const lockAcquired = UnifiedGameEngine.checkAndAcquireLock(`daily_claim_${profile.uid}`, 3000);
+    if (!lockAcquired) {
+      toast.info('جاري معالجة الجائزة...');
+      return;
+    }
+
     setClaiming(true);
 
     try {
@@ -181,6 +189,13 @@ export default function DailyReward() {
 
   const handleBigChestClaim = async () => {
     if (!canClaimBigChest || claimingChest) return;
+
+    const lockAcquired = UnifiedGameEngine.checkAndAcquireLock(`big_chest_${profile.uid}`, 3000);
+    if (!lockAcquired) {
+      toast.info('جاري فتح الصندوق...');
+      return;
+    }
+
     setClaimingChest(true);
 
     try {
